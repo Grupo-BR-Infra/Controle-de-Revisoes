@@ -357,6 +357,7 @@ var ALL_REVS = [], REVS = [], MONTHS = ['TOTAL'], SP_ITEM_MAP_B = {};
 var ALL_DESVIOS = [], DESVIOS_OBRA = [], SP_ITEM_MAP_C = {};
 var OBRA_ATUAL = '';
 var DESVIOS_DETECTADOS = [];  // current detection result (not yet saved)
+var REF_ROWS = {};              // parent/reference tasks for current detection
 var SITE_ID = null, LIST_ID_B = null, LIST_ID_C = null;
 var msalApp = null, currentAccount = null;
 
@@ -802,8 +803,8 @@ function detectarDesvios() {
     if (anyKey) nWeeks = baseT[anyKey].weeklyDates.length;
     console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Resumo=Sim:', nResumoSim, '| Weekly cols:', nWeeks, '| dataRef:', dataRef);
 
-    var desvios = [];       // leaf tasks — get saved to SP
-    var refRows = {};       // parent tasks — visual context only, keyed by EDT
+    var desvios = [];       // leaf tasks
+    REF_ROWS = {};          // parent ref tasks (global)
     var allSortedEdts = Object.keys(baseT).filter(function(e){
       return baseT[e].resumo === 'sim';
     }).sort(sortEdt);
@@ -816,7 +817,7 @@ function detectarDesvios() {
       // Parent summary: show as reference row (no deviation analysis)
       if (isParentSummary(edt)) {
         var devD = Math.round((tt.fim - bt.fim) / 86400000);
-        refRows[edt] = { edt: edt, nome: bt.name,
+        REF_ROWS[edt] = { edt: edt, nome: bt.name,
           fimBase: bt.fim.toISOString().slice(0,10),
           fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
         return;
@@ -916,8 +917,8 @@ function renderDesviosTable() {
   // ── Build rows interleaved: parent refs + leaf desvios sorted by EDT ──
   var allRows = [];
   // Add parent ref rows
-  Object.keys(refRows).forEach(function(edt){
-    allRows.push({ type: 'ref', data: refRows[edt] });
+  Object.keys(REF_ROWS).forEach(function(edt){
+    allRows.push({ type: 'ref', data: REF_ROWS[edt] });
   });
   // Add leaf desvio rows with their index in DESVIOS_DETECTADOS
   DESVIOS_DETECTADOS.forEach(function(d, i){
