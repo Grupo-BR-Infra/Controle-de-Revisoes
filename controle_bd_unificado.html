@@ -745,29 +745,51 @@ function detectarDesvios() {
       if (bt.resumo !== 'sim') return;
       // Filtro 2: custo diferente de zero no baseline
       if (!bt.custo || bt.custo === 0) return;
+      // Filtro 3: precisa ter datas de término nas duas versões
+      if (!bt.fim || !tt.fim) return;
 
-      // Cumulative cost up to dataRef
+      var devDias = Math.round((tt.fim - bt.fim) / 86400000);
+
+      // ── Classificação por situação ──────────────────────────────────────
+      // Considera apenas desvio >= 3 dias (tolerância)
+      if (Math.abs(devDias) < 3) return;
+
+      var situacao;
+      if (devDias < 0) {
+        // Tendência termina ANTES do baseline → adiantada
+        situacao = 'adiantada';
+      } else if (bt.fim <= dataRef) {
+        // Baseline já deveria ter terminado até a data de referência → em atraso
+        situacao = 'em_atraso';
+      } else {
+        // Baseline ainda não venceu, mas tendência já projeta atraso → tendência de atraso
+        situacao = 'tendencia_atraso';
+      }
+
+      // Custo acumulado até a data de referência
+      // (só significativo para tarefas que já deveriam ter progresso)
       var cumB = 0, cumT = 0;
       bt.weekly.forEach(function(v,i){ if(bt.weeklyDates[i]<=dataRef) cumB+=v||0; });
       tt.weekly.forEach(function(v,i){ if(tt.weeklyDates[i]<=dataRef) cumT+=v||0; });
-      var devRS = cumT - cumB;
-      var devPct = cumB > 0 ? devRS / cumB * 100 : 0;
-
-      // Days deviation
-      var devDias = 0;
-      if (bt.fim && tt.fim) devDias = Math.round((tt.fim - bt.fim) / 86400000);
-
-      if (Math.abs(devDias) < 3 && Math.abs(devPct) < 3) return;
+      var devRS  = cumT - cumB;
+      var devPct = cumB > 0 ? Math.round((devRS / cumB * 100) * 10) / 10 : 0;
 
       desvios.push({
         edt: edt, nome: bt.name, dataRef: dataRefStr,
-        fimBase: bt.fim ? bt.fim.toISOString().slice(0,10) : '', fimTend: tt.fim ? tt.fim.toISOString().slice(0,10) : '',
-        devDias: devDias, cumBase: Math.round(cumB), cumTend: Math.round(cumT),
-        devRS: Math.round(devRS), devPct: Math.round(devPct * 10) / 10,
-        // Manual fields
+        fimBase: bt.fim.toISOString().slice(0,10),
+        fimTend: tt.fim.toISOString().slice(0,10),
+        situacao: situacao,   // 'em_atraso' | 'tendencia_atraso' | 'adiantada'
+        devDias: devDias,
+        cumBase: Math.round(cumB), cumTend: Math.round(cumT),
+        devRS: Math.round(devRS), devPct: devPct,
+        // Campos manuais
         confirmado: false, motivo: '', responsavel: '', descricao: '', acao: '', prazo: '', status: 'Pendente'
       });
     });
+
+    // Ordenar: em_atraso → tendencia_atraso → adiantada
+    var ordem = { em_atraso: 0, tendencia_atraso: 1, adiantada: 2 };
+    desvios.sort(function(a,b){ return (ordem[a.situacao]||0) - (ordem[b.situacao]||0); });
 
     DESVIOS_DETECTADOS = desvios;
     renderDesviosTable();
@@ -792,9 +814,22 @@ function renderDesviosTable() {
     'Interferência de terceiros','Interferência de concessionárias','Atraso em licença / aprovação',
     'Problema logístico / acesso','Alteração de escopo','Outro'];
 
-  var h = '<div class="scroll-x"><table class="tbl crono"><thead><tr>';
+  // Filtro de situação
+  var filtroSit = 'todas';
+  var nAt  = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='em_atraso'; }).length;
+  var nTen = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='tendencia_atraso'; }).length;
+  var nAdj = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='adiantada'; }).length;
+
+  var h = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+  h += '<button class="btn" style="background:#C0392B;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('em_atraso')">🔴 Em Atraso ('+nAt+')</button>';
+  h += '<button class="btn" style="background:#E67E22;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('tendencia_atraso')">🟡 Tendência de Atraso ('+nTen+')</button>';
+  h += '<button class="btn" style="background:#27AE60;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('adiantada')">🟢 Adiantadas ('+nAdj+')</button>';
+  h += '<button class="btn btn-dark" style="padding:5px 12px;font-size:12px" onclick="filtrarSituacao('todas')">Todas</button>';
+  h += '</div>';
+
+  h += '<div class="scroll-x"><table class="tbl crono" id="tbl-desvios"><thead><tr>';
   // Auto headers
-  ['EDT','Tarefa Resumo','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
+  ['Situação','EDT','Tarefa Resumo','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
     h += '<th class="td-crono-hdr" style="background:var(--mod-crono)">' + t + '</th>';
   });
   // Manual headers
@@ -803,12 +838,14 @@ function renderDesviosTable() {
   });
   h += '</tr></thead><tbody>';
 
-  DESVIOS_DETECTADOS.forEach(function(d, i) {
-    var isCrit = Math.abs(d.devDias) >= 15;
-    var rowCls = isCrit ? 'desvio-crit' : (Math.abs(d.devDias) >= 5 ? 'desvio-aten' : '');
-    var diasCls = isCrit ? 'dev-dias-crit' : 'dev-dias-aten';
+  var SIT_LABEL = { em_atraso: '<span style="color:#922B21;font-weight:700">🔴 Em Atraso</span>', tendencia_atraso: '<span style="color:#784212;font-weight:700">🟡 Tendência</span>', adiantada: '<span style="color:#1E8449;font-weight:700">🟢 Adiantada</span>' };
+  var SIT_ROW   = { em_atraso: 'background:#FDEDEC', tendencia_atraso: 'background:#FEFDE7', adiantada: 'background:#EAFAF1' };
 
-    h += '<tr class="' + rowCls + '">';
+  DESVIOS_DETECTADOS.forEach(function(d, i) {
+    var diasCls = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
+
+    h += '<tr data-sit="'+d.situacao+'" style="'+SIT_ROW[d.situacao]+'">';
+    h += '<td class="td-auto" style="text-align:center;white-space:nowrap">' + (SIT_LABEL[d.situacao]||d.situacao) + '</td>';
     h += '<td class="td-auto">' + d.edt + '</td>';
     h += '<td class="td-auto">' + d.nome + '</td>';
     h += '<td class="td-auto" style="text-align:center">' + (d.fimBase||'-') + '</td>';
@@ -830,6 +867,12 @@ function renderDesviosTable() {
     h += '</tr>';
   });
   document.getElementById('crono-desvios-area').innerHTML = h + '</tbody></table></div>';
+}
+
+function filtrarSituacao(sit) {
+  document.querySelectorAll('#tbl-desvios tbody tr').forEach(function(tr) {
+    tr.style.display = (sit === 'todas' || tr.dataset.sit === sit) ? '' : 'none';
+  });
 }
 
 function updDesvio(i, field, val) { DESVIOS_DETECTADOS[i][field] = val; }
