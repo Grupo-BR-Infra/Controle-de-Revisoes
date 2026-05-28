@@ -866,10 +866,10 @@ function renderDesviosTable() {
   var nAdj = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='adiantada'; }).length;
 
   var h = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
-  h += '<button class="btn" style="background:#C0392B;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('em_atraso')">🔴 Em Atraso ('+nAt+')</button>';
-  h += '<button class="btn" style="background:#E67E22;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('tendencia_atraso')">🟡 Tendência de Atraso ('+nTen+')</button>';
-  h += '<button class="btn" style="background:#27AE60;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao('adiantada')">🟢 Adiantadas ('+nAdj+')</button>';
-  h += '<button class="btn btn-dark" style="padding:5px 12px;font-size:12px" onclick="filtrarSituacao('todas')">Todas</button>';
+  h += '<button class="btn" style="background:#C0392B;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao(\'em_atraso\')">🔴 Em Atraso ('+nAt+')</button>';
+  h += '<button class="btn" style="background:#E67E22;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao(\'tendencia_atraso\')">🟡 Tendência de Atraso ('+nTen+')</button>';
+  h += '<button class="btn" style="background:#27AE60;color:#fff;padding:5px 12px;font-size:12px" onclick="filtrarSituacao(\'adiantada\')">🟢 Adiantadas ('+nAdj+')</button>';
+  h += '<button class="btn btn-dark" style="padding:5px 12px;font-size:12px" onclick="filtrarSituacao(\'todas\')">Todas</button>';
   h += '</div>';
 
   h += '<div class="scroll-x"><table class="tbl crono" id="tbl-desvios"><thead><tr>';
