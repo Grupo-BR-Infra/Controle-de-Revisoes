@@ -756,11 +756,23 @@ function parseCronoSheet(ws) {
       name:    row[1] ? String(row[1]).trim() : '',
       custo:   typeof row[2] === 'number' ? row[2] : 0,
       fim:     toDate(row[5]),
-      resumo:  resumoVal,   // 'sim' | 'não' | ''
+      resumo:  resumoVal,
+      isParent: false,
+      isLeaf:   false,
       weekly:  weeklyIdx.map(function(ci){ return (typeof row[ci]==='number' ? row[ci] : 0); }),
       weeklyDates: weeklyDates
     };
   }
+
+  // Classify Resumo=Sim tasks: parent (has Resumo=Sim children) vs leaf (no Resumo=Sim children)
+  var resumoEdts = Object.keys(tasks).filter(function(e){ return tasks[e].resumo === 'sim'; });
+  resumoEdts.forEach(function(edt) {
+    var prefix = edt + '.';
+    var hasChild = resumoEdts.some(function(o){ return o !== edt && o.indexOf(prefix) === 0; });
+    tasks[edt].isParent = hasChild;
+    tasks[edt].isLeaf   = !hasChild;
+  });
+
   return tasks;
 }
 
@@ -789,19 +801,13 @@ function detectarDesvios() {
       return 0;
     }
 
-    // Collect all Resumo=Sim EDTs from baseT to detect parent vs leaf
-    var allResumoEdts = Object.keys(baseT).filter(function(e){ return baseT[e].resumo === 'sim'; });
-    function isParentSummary(edt) {
-      return allResumoEdts.some(function(other){ return other !== edt && other.startsWith(edt + '.'); });
-    }
-
     // Diagnóstico
     var nBase = Object.keys(baseT).length, nTend = Object.keys(tendT).length;
-    var nResumoSim = Object.keys(baseT).filter(function(k){ return baseT[k].resumo==='sim'; }).length;
-    var nWeeks = 0;
+    var nParents = Object.keys(baseT).filter(function(k){ return baseT[k].isParent; }).length;
+    var nLeaves  = Object.keys(baseT).filter(function(k){ return baseT[k].isLeaf; }).length;
     var anyKey = Object.keys(baseT).find(function(k){ return baseT[k].weeklyDates.length>0; });
-    if (anyKey) nWeeks = baseT[anyKey].weeklyDates.length;
-    console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Resumo=Sim:', nResumoSim, '| Weekly cols:', nWeeks, '| dataRef:', dataRef);
+    var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
+    console.log('[Desvios] Base:', nBase, '| Pais resumo:', nParents, '| Folhas resumo:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
 
     var desvios = [];       // leaf tasks
     REF_ROWS = {};          // parent ref tasks (global)
@@ -814,15 +820,16 @@ function detectarDesvios() {
       if (!bt || !tt) return;
       if (!bt.fim || !tt.fim) return;
 
-      // Parent summary: show as reference row (no deviation analysis)
-      if (isParentSummary(edt)) {
+      // Parent summary: classified at parse time → reference row only
+      if (bt.isParent) {
         var devD = Math.round((tt.fim - bt.fim) / 86400000);
         REF_ROWS[edt] = { edt: edt, nome: bt.name,
           fimBase: bt.fim.toISOString().slice(0,10),
           fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
         return;
       }
-      // Leaf: must have cost > 0
+      // Leaf summary: apply custo > 0 filter, then analyse deviations
+      if (!bt.isLeaf) return;
       if (!bt.custo || bt.custo === 0) return;
 
       var devDias = Math.round((tt.fim - bt.fim) / 86400000);
