@@ -1115,41 +1115,87 @@ function renderCronoExistentes() {
   el.innerHTML = rows.join('');
 }
 
+// Delete key store for historico
+var _histDeleteKeys = [];
+function _deleteHistByIdx(idx) { deleteCronoRec(_histDeleteKeys[idx]); }
+function _toggleHistCard(idx) {
+  var body = document.getElementById('hist-body-'+idx);
+  var btn  = document.getElementById('hist-toggle-'+idx);
+  if (!body) return;
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  btn.textContent = open ? '\u25b6 Expandir' : '\u25bc Recolher';
+}
+
 function renderCronoHistorico() {
   var el = document.getElementById('crono-historico-content');
-  if (!LIST_ID_C) { el.innerHTML = '<div class="empty" style="border-color:#f0c830;background:#fffbe6;color:#7a5800">⚠️ A lista <strong>DesviosCronograma</strong> ainda não foi criada no SharePoint.<br><br>Crie a lista e em seguida faça logout e login novamente para ativá-la.</div>'; return; }
-  if (!OBRA_ATUAL) { el.innerHTML = '<div class="empty">Selecione uma obra para ver o histórico.</div>'; return; }
+  if (!LIST_ID_C) { el.innerHTML = '<div class="empty">Lista DesviosCronograma nao encontrada.</div>'; return; }
+  if (!OBRA_ATUAL) { el.innerHTML = '<div class="empty">Selecione uma obra.</div>'; return; }
   if (!DESVIOS_OBRA.length) { el.innerHTML = '<div class="empty">Nenhum desvio registrado para esta obra.</div>'; return; }
 
-  var h = '<div class="obra-section"><span>🏗️ '+OBRA_ATUAL+'</span><span style="color:#888;font-size:11px;margin-left:8px">— '+DESVIOS_OBRA.length+' registro(s)</span></div>';
-  DESVIOS_OBRA.forEach(function(rec) {
-    var crit = rec.desvios.filter(function(d){ return Math.abs(d.devDias)>=15; }).length;
-    var pend = rec.desvios.filter(function(d){ return d.status==='Pendente'; }).length;
-    h += '<div class="card" style="margin-bottom:10px">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-    h += '<div><strong>Referência: ' + rec.dataRef + '</strong>';
-    if(rec.obs) h += ' <span style="color:#888;font-size:11px">— '+rec.obs+'</span>';
-    h += '</div>';
-    h += '<div style="display:flex;gap:6px;align-items:center">';
-    h += '<span class="badge b-red">'+crit+' crítico(s)</span>';
-    h += '<span class="badge b-amber">'+pend+' pendente(s)</span>';
-    h += '<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" onclick="deleteCronoRec(\''+rec.titleKey+'\')">Excluir</button>';
-    h += '</div></div>';
-    h += '<div class="scroll-x"><table class="tbl crono" style="font-size:11px"><thead><tr>' +
-      '<th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Responsável</th>' +
-      '</tr></thead><tbody>';
-    rec.desvios.forEach(function(d){
-      var diasCls = Math.abs(d.devDias)>=15?'dev-dias-crit':'dev-dias-aten';
-      h += '<tr><td>'+d.edt+'</td><td>'+d.nome+'</td>';
-      h += '<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>';
-      h += '<td>'+(d.motivo||'<em style="color:#aaa">não informado</em>')+'</td>';
-      var sc={'Pendente':'b-gray','Em andamento':'b-amber','Concluída':'b-green','Cancelada':'b-red'}[d.status]||'b-gray';
-      h += '<td><span class="badge '+sc+'">'+d.status+'</span></td>';
-      h += '<td>'+(d.responsavel||'—')+'</td></tr>';
+  _histDeleteKeys = [];
+  var SIT_LABEL = { em_atraso:'Em Atraso', tendencia_atraso:'Tendencia', adiantada:'Adiantada' };
+  var SIT_ICON  = { em_atraso:'&#128308;', tendencia_atraso:'&#128993;', adiantada:'&#128994;' };
+  var SC  = { 'Pendente':'b-gray','Em andamento':'b-amber','Concluida':'b-green','Cancelada':'b-red' };
+
+  var parts = [];
+  parts.push('<div class="obra-section"><span>' + OBRA_ATUAL + '</span>');
+  parts.push('<span style="color:#888;font-size:11px;margin-left:8px">-- ' + DESVIOS_OBRA.length + ' registro(s)</span></div>');
+
+  DESVIOS_OBRA.slice().reverse().forEach(function(rec, idx) {
+    var keyIdx = _histDeleteKeys.length;
+    _histDeleteKeys.push(rec.titleKey);
+    var total = rec.desvios.length;
+    var crit  = rec.desvios.filter(function(d){ return Math.abs(d.devDias)>=15; }).length;
+    var pend  = rec.desvios.filter(function(d){ return d.status==='Pendente'; }).length;
+    var atras = rec.desvios.filter(function(d){ return d.situacao==='em_atraso'; }).length;
+    var tend  = rec.desvios.filter(function(d){ return d.situacao==='tendencia_atraso'; }).length;
+
+    parts.push('<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden">');
+    parts.push('<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--vf);cursor:pointer;flex-wrap:wrap;gap:6px" onclick="_toggleHistCard('+idx+')">');
+    parts.push('<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">');
+    parts.push('<strong style="color:var(--mod-crono)">Ref: '+rec.dataRef+'</strong>');
+    if (rec.obs) parts.push('<span style="color:#888;font-size:11px">-- '+rec.obs+'</span>');
+    parts.push('<span class="badge b-blue">'+total+' desvios</span>');
+    if (crit)  parts.push('<span class="badge b-red">'+crit+' critico(s)</span>');
+    if (atras) parts.push('<span class="badge b-red">'+atras+' em atraso</span>');
+    if (tend)  parts.push('<span class="badge b-amber">'+tend+' tendencia</span>');
+    if (pend)  parts.push('<span class="badge b-gray">'+pend+' pendente(s)</span>');
+    parts.push('</div>');
+    parts.push('<div style="display:flex;gap:8px;align-items:center">');
+    parts.push('<span style="font-size:10px;color:#aaa">'+new Date(rec.date).toLocaleDateString('pt-BR')+'</span>');
+    parts.push('<button id="hist-toggle-'+idx+'" class="btn" style="background:#e8eef5;color:#1a5276;font-size:11px;padding:3px 10px">&#9654; Expandir</button>');
+    parts.push('<button class="btn btn-danger" style="padding:3px 8px;font-size:10px" data-kidx="'+keyIdx+'" onclick="event.stopPropagation();_deleteHistByIdx(parseInt(this.dataset.kidx))">Excluir</button>');
+    parts.push('</div></div>');
+
+    parts.push('<div id="hist-body-'+idx+'" style="display:none;padding:0 14px 12px">');
+    parts.push('<div class="scroll-x"><table class="tbl crono" style="font-size:11px"><thead><tr>');
+    parts.push('<th>Situacao</th><th>EDT</th><th>Tarefa</th><th>Termino Base</th><th>Termino Tend.</th><th>Desvio</th><th>Motivo</th><th>Status</th><th>Responsavel</th><th>Acao Corretiva</th><th>Prazo</th>');
+    parts.push('</tr></thead><tbody>');
+
+    rec.desvios.forEach(function(d) {
+      var sitIcon  = SIT_ICON[d.situacao]  || '';
+      var sitLabel = SIT_LABEL[d.situacao] || d.situacao || '--';
+      var diasCls  = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
+      var sc = SC[d.status] || 'b-gray';
+      parts.push('<tr>');
+      parts.push('<td>'+sitIcon+' '+sitLabel+'</td>');
+      parts.push('<td>'+d.edt+'</td>');
+      parts.push('<td>'+d.nome+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimBase||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimTend||'--')+'</td>');
+      parts.push('<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>');
+      parts.push('<td>'+(d.motivo||'--')+'</td>');
+      parts.push('<td><span class="badge '+sc+'">'+d.status+'</span></td>');
+      parts.push('<td>'+(d.responsavel||'--')+'</td>');
+      parts.push('<td style="max-width:160px">'+(d.acao||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.prazo||'--')+'</td>');
+      parts.push('</tr>');
     });
-    h += '</tbody></table></div></div>';
+    parts.push('</tbody></table></div></div></div>');
   });
-  el.innerHTML = h;
+
+  el.innerHTML = parts.join('');
 }
 
 async function deleteCronoRec(titleKey) {
