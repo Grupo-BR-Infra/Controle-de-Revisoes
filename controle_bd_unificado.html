@@ -184,8 +184,6 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
     </div>
   </div>
 
-  <div id="msg-area"></div>
-
   <div class="app-layout">
     <!-- ── SIDEBAR ───────────────────────────────────────────── -->
     <div class="sidebar" id="sidebar">
@@ -224,6 +222,7 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
 
     <!-- ── MAIN AREA ─────────────────────────────────────────── -->
     <div class="main-area">
+      <div id="msg-area"></div>
 
   <!-- ══════════════════════════════════════════════════════════
        MÓDULO CRONOGRAMA
@@ -844,26 +843,42 @@ function detectarDesvios() {
       return 0;
     }
 
-    // Diagnóstico
-    var nBase = Object.keys(baseT).length, nTend = Object.keys(tendT).length;
-    var nParents = Object.keys(baseT).filter(function(k){ return baseT[k].isParent; }).length;
-    var nLeaves  = Object.keys(baseT).filter(function(k){ return baseT[k].isLeaf; }).length;
-    var anyKey = Object.keys(baseT).find(function(k){ return baseT[k].weeklyDates.length>0; });
-    var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
-    console.log('[Desvios] Base:', nBase, '| Pais resumo:', nParents, '| Folhas resumo:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
+    // Collect all EDT codes sorted
+    var allEdts = Object.keys(baseT).sort(sortEdt);
 
-    var desvios = [];       // leaf tasks
-    REF_ROWS = {};          // parent ref tasks (global)
-    var allSortedEdts = Object.keys(baseT).filter(function(e){
-      return baseT[e].resumo === 'sim';
-    }).sort(sortEdt);
+    // Diagnostics
+    var nBase = allEdts.length;
+    var nL1L2 = allEdts.filter(function(e){ return (e.match(/\./g)||[]).length <= 2; }).length;
+    var nLeaves = allEdts.filter(function(k){ return baseT[k].isLeaf; }).length;
+    var anyKey = allEdts.find(function(k){ return baseT[k].weeklyDates.length>0; });
+    var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
+    console.log('[Desvios] Total EDTs:', nBase, '| L1+L2 fixos:', nL1L2, '| Folhas:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
+
+    var desvios = [];
+    REF_ROWS = {};
+
+    // STEP 1: Force EDT levels 1 and 2 into REF_ROWS (always shown as context)
+    allEdts.forEach(function(edt) {
+      var dots = (edt.match(/\./g)||[]).length;
+      if (dots > 1) return;    // ref rows: EDT "1" (root) + "1.1","1.2"...
+      var bt = baseT[edt], tt = tendT[edt];
+      if (!bt || !tt || !bt.fim || !tt.fim) return;
+      var devD = Math.round((tt.fim - bt.fim) / 86400000);
+      REF_ROWS[edt] = { edt: edt, nome: bt.name,
+        fimBase: bt.fim.toISOString().slice(0,10),
+        fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
+    });
+
+    // STEP 2: Analyse leaf Resumo=Sim tasks at level 3+ with custo > 0
+    var allSortedEdts = allEdts.filter(function(e){
+      var dots = (e.match(/\./g)||[]).length;
+      return dots >= 2 && baseT[e].resumo === 'sim';
+    });
 
     allSortedEdts.forEach(function(edt) {
       var bt = baseT[edt], tt = tendT[edt];
-      if (!bt || !tt) return;
-      if (!bt.fim || !tt.fim) return;
-
-      // Parent summary: classified at parse time → reference row only
+      if (!bt || !tt || !bt.fim || !tt.fim) return;
+      // Parent at this level → additional reference row
       if (bt.isParent) {
         var devD = Math.round((tt.fim - bt.fim) / 86400000);
         REF_ROWS[edt] = { edt: edt, nome: bt.name,
@@ -871,7 +886,7 @@ function detectarDesvios() {
           fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
         return;
       }
-      // Leaf summary: apply custo > 0 filter, then analyse deviations
+      // Leaf: require custo > 0
       if (!bt.isLeaf) return;
       if (!bt.custo || bt.custo === 0) return;
 
