@@ -425,9 +425,9 @@ async function initSharePoint() {
   var lb = all.find(function(l) { return l.displayName === CONFIG.listBudget; });
   var lc = all.find(function(l) { return l.displayName === CONFIG.listCrono; });
   if (!lb) throw new Error('Lista "' + CONFIG.listBudget + '" não encontrada no SharePoint.');
-  if (!lc) throw new Error('Lista "' + CONFIG.listCrono + '" não encontrada. Crie-a no SharePoint com os campos: Title, Obra, DataReferencia, DadosJSON, Observacao, DataRegistro.');
   LIST_ID_B = lb.id;
-  LIST_ID_C = lc.id;
+  // Cronograma list is optional — module shows setup message if not found
+  LIST_ID_C = lc ? lc.id : null;
 }
 
 // ════════════════════════════════════════════════
@@ -444,11 +444,18 @@ async function spDeleteBudget(id) { return graphDelete('/sites/'+SITE_ID+'/lists
 //  SP — CRONOGRAMA
 // ════════════════════════════════════════════════
 async function spGetAllCrono() {
+  if (!LIST_ID_C) return [];
   var url = '/sites/' + SITE_ID + '/lists/' + LIST_ID_C + '/items?$expand=fields($select=Title,Obra,DataReferencia,DadosJSON,Observacao,DataRegistro)&$top=999';
   var r = await graphGet(url); return r.value || [];
 }
-async function spCreateCrono(f) { return graphPost('/sites/'+SITE_ID+'/lists/'+LIST_ID_C+'/items', {fields:f}); }
-async function spDeleteCrono(id) { return graphDelete('/sites/'+SITE_ID+'/lists/'+LIST_ID_C+'/items/'+id); }
+async function spCreateCrono(f) {
+  if (!LIST_ID_C) throw new Error('Lista DesviosCronograma não encontrada. Crie-a no SharePoint primeiro.');
+  return graphPost('/sites/'+SITE_ID+'/lists/'+LIST_ID_C+'/items', {fields:f});
+}
+async function spDeleteCrono(id) {
+  if (!LIST_ID_C) return;
+  return graphDelete('/sites/'+SITE_ID+'/lists/'+LIST_ID_C+'/items/'+id);
+}
 
 // ════════════════════════════════════════════════
 //  LOAD ALL
@@ -660,34 +667,36 @@ function parseBudgetSheet(ws) {
 //  CRONOGRAMA — DETECTION
 // ════════════════════════════════════════════════
 function parseCronoSheet(ws) {
-  var raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:false });
+  // Use raw:true to get serial numbers; wb was loaded with cellDates:true
+  // so date cells may arrive as Date objects OR serial numbers — handle both
   var rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
   var hdr = rows[0];
-  // Find weekly columns (datetime values in header)
+
+  function toDate(v) {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v === 'number' && v > 40000)
+      return new Date(Date.UTC(1899, 11, 30) + v * 86400000);
+    return null;
+  }
+
+  // Find weekly columns (Date objects or serial numbers in header)
   var weeklyIdx = [], weeklyDates = [];
   for (var c = 6; c < hdr.length; c++) {
-    var v = hdr[c];
-    if (v && typeof v === 'number' && v > 40000) {
-      weeklyIdx.push(c);
-      var d = new Date(Date.UTC(1899,11,30) + v * 86400000);
-      weeklyDates.push(d);
-    }
+    var d = toDate(hdr[c]);
+    if (d) { weeklyIdx.push(c); weeklyDates.push(d); }
   }
+
   var tasks = {};
   for (var r = 1; r < rows.length; r++) {
     var row = rows[r]; if (!row) continue;
     var edt = row[0] ? String(row[0]).trim() : '';
     if (!edt || edt === 'EDT') continue;
-    var fim = row[5];
-    var fimDate = null;
-    if (fim && typeof fim === 'number' && fim > 40000) {
-      fimDate = new Date(Date.UTC(1899,11,30) + fim * 86400000);
-    }
     tasks[edt] = {
-      name: row[1] ? String(row[1]).trim() : '',
+      name:  row[1] ? String(row[1]).trim() : '',
       custo: row[2] || 0,
-      fim: fimDate,
-      weekly: weeklyIdx.map(function(ci){ return row[ci] || 0; }),
+      fim:   toDate(row[5]),
+      weekly: weeklyIdx.map(function(ci){ return (typeof row[ci]==='number' ? row[ci] : 0); }),
       weeklyDates: weeklyDates
     };
   }
@@ -700,13 +709,21 @@ function detectarDesvios() {
   }
   var dataRefStr = document.getElementById('crono-data-ref').value;
   if (!dataRefStr) { showMsg('Informe a data de referência.', 'err'); return; }
-  var dataRef = new Date(dataRefStr + 'T12:00:00');
+  // Parse date at noon UTC to avoid timezone day-shift issues
+  var dataRef = new Date(dataRefStr + 'T12:00:00Z');
   var nivel = parseInt(document.getElementById('crono-nivel').value) || 1;
 
   try {
     var wb = BD_DATA.wb;
     var baseT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoBase]);
     var tendT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoTend]);
+
+    // Diagnostic: count tasks and weekly cols found
+    var nBase = Object.keys(baseT).length;
+    var nTend = Object.keys(tendT).length;
+    var sampleKey = Object.keys(baseT).find(function(k){ return k.split('.').length-1===nivel; });
+    var nWeeks = sampleKey ? baseT[sampleKey].weeklyDates.length : 0;
+    console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Weekly cols:', nWeeks, '| nivel:', nivel, '| dataRef:', dataRef);
 
     var desvios = [];
     Object.keys(baseT).sort().forEach(function(edt) {
@@ -741,7 +758,8 @@ function detectarDesvios() {
     renderDesviosTable();
     if (desvios.length > 0) {
       document.getElementById('crono-register-area').style.display = 'block';
-      showMsg(desvios.length + ' desvio(s) detectado(s). Preencha as colunas manuais e clique em "Registrar".', 'ok');
+      var msgExtra = LIST_ID_C ? '' : ' ⚠️ Lista DesviosCronograma não existe no SharePoint — detecção funciona mas o botão Registrar não estará disponível.';
+      showMsg(desvios.length + ' desvio(s) detectado(s). Preencha as colunas manuais e clique em "Registrar".' + msgExtra, LIST_ID_C ? 'ok' : 'warn');
     } else {
       document.getElementById('crono-register-area').style.display = 'none';
       showMsg('Nenhum desvio significativo detectado para a data e nível informados.', 'info');
@@ -827,6 +845,7 @@ async function registrarDesvios() {
 
 function renderCronoHistorico() {
   var el = document.getElementById('crono-historico-content');
+  if (!LIST_ID_C) { el.innerHTML = '<div class="empty" style="border-color:#f0c830;background:#fffbe6;color:#7a5800">⚠️ A lista <strong>DesviosCronograma</strong> ainda não foi criada no SharePoint.<br><br>Crie a lista e em seguida faça logout e login novamente para ativá-la.</div>'; return; }
   if (!OBRA_ATUAL) { el.innerHTML = '<div class="empty">Selecione uma obra para ver o histórico.</div>'; return; }
   if (!DESVIOS_OBRA.length) { el.innerHTML = '<div class="empty">Nenhum desvio registrado para esta obra.</div>'; return; }
 
