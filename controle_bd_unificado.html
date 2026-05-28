@@ -988,7 +988,7 @@ function renderCronoExistentes() {
     h += '<div style="display:flex;gap:6px;align-items:center">';
     if(crit) h += '<span class="badge b-red">'+crit+' crítico(s)</span>';
     h += '<span style="font-size:10px;color:#aaa">'+new Date(rec.date).toLocaleDateString('pt-BR')+'</span>';
-    h += '<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" onclick="deleteCronoRec(''+rec.titleKey+'')">Excluir</button>';
+    h += '<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" onclick="deleteCronoRec(\\''+rec.titleKey+'\\')">Excluir</button>';
     h += '</div></div>';
     h += '<div class="scroll-x" style="margin-top:8px"><table class="tbl crono" style="font-size:11px"><thead><tr>';
     h += '<th>Situação</th><th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Responsável</th><th>Ação Corretiva</th>';
