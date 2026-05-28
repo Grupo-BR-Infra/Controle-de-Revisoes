@@ -920,7 +920,7 @@ function renderDesviosTable() {
 }
 
 function toggleAllDesvios(checked) {
-  document.querySelectorAll('.chk-desvio').forEach(function(c){ c.checked = checked; });
+  document.querySelectorAll('.chk-desvio').forEach(function(c){ c.checked = !!checked; });
 }
 
 function filtrarSituacao(sit) {
@@ -938,13 +938,15 @@ async function registrarDesvios() {
   var dataRef = document.getElementById('crono-data-ref').value;
   var btn = document.getElementById('btn-registrar');
 
-  // Collect only checked desvios
-  var checkedIdxs = [];
-  document.querySelectorAll('.chk-desvio:checked').forEach(function(c){
-    checkedIdxs.push(parseInt(c.dataset.idx));
+  // Collect only checked desvios — check .checked property directly (more reliable cross-browser)
+  var desviosParaSalvar = [];
+  document.querySelectorAll('.chk-desvio').forEach(function(c){
+    if (c.checked) {
+      var idx = parseInt(c.dataset.idx);
+      if (!isNaN(idx) && DESVIOS_DETECTADOS[idx]) desviosParaSalvar.push(DESVIOS_DETECTADOS[idx]);
+    }
   });
-  if (!checkedIdxs.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
-  var desviosParaSalvar = checkedIdxs.map(function(i){ return DESVIOS_DETECTADOS[i]; });
+  if (!desviosParaSalvar.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
 
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
