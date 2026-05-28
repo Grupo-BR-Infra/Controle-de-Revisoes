@@ -184,8 +184,6 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
     </div>
   </div>
 
-  <div id="msg-area"></div>
-
   <div class="app-layout">
     <!-- ── SIDEBAR ───────────────────────────────────────────── -->
     <div class="sidebar" id="sidebar">
@@ -224,6 +222,7 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
 
     <!-- ── MAIN AREA ─────────────────────────────────────────── -->
     <div class="main-area">
+      <div id="msg-area"></div>
 
   <!-- ══════════════════════════════════════════════════════════
        MÓDULO CRONOGRAMA
@@ -249,6 +248,23 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
           </div>
           <div style="background:#e8f5e9;border-radius:5px;padding:6px 12px;font-size:12px;color:#1e8449;align-self:center">
             ✅ Resumo = Sim &amp; custo &gt; 0
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;align-self:center">
+            <div style="font-size:11px;font-weight:700;color:var(--mod-crono)">Situação das tarefas:</div>
+            <div style="display:flex;gap:0;border:1px solid var(--mod-crono);border-radius:4px;overflow:hidden">
+              <button id="filtro-nao-concluidas" onclick="setFiltroConclusao('nao_concluidas')"
+                style="padding:5px 12px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:var(--mod-crono);color:#fff;transition:all .15s">
+                Não concluídas
+              </button>
+              <button id="filtro-concluidas" onclick="setFiltroConclusao('concluidas')"
+                style="padding:5px 12px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:#fff;color:var(--mod-crono);transition:all .15s">
+                Concluídas
+              </button>
+              <button id="filtro-todas" onclick="setFiltroConclusao('todas')"
+                style="padding:5px 12px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:#fff;color:var(--mod-crono);transition:all .15s">
+                Todas
+              </button>
+            </div>
           </div>
           <button class="btn btn-crono" onclick="detectarDesvios()" id="btn-detectar">🔍 Detectar</button>
         </div>
@@ -392,6 +408,7 @@ var ALL_REVS = [], REVS = [], MONTHS = ['TOTAL'], SP_ITEM_MAP_B = {};
 var ALL_DESVIOS = [], DESVIOS_OBRA = [], SP_ITEM_MAP_C = {};
 var OBRA_ATUAL = '';
 var DESVIOS_DETECTADOS = [];  // current detection result (not yet saved)
+var FILTRO_CONCLUSAO = 'nao_concluidas';  // 'nao_concluidas' | 'concluidas' | 'todas'
 var COMP_MOTIVOS = {};          // motivos de desvio no comparativo budget
 var REF_ROWS = {};              // parent/reference tasks for current detection
 var SITE_ID = null, LIST_ID_B = null, LIST_ID_C = null;
@@ -587,6 +604,20 @@ function showMsg(t, tp) {
 }
 function fNum(v) { if(!v&&v!==0) return '-'; var n=Math.round(v); return n===0?'-':new Intl.NumberFormat('pt-BR').format(n); }
 function fPct(v) { if(!v) return '-'; return (Math.abs(v)>1?v:v*100).toFixed(2)+'%'; }
+
+function setFiltroConclusao(val) {
+  FILTRO_CONCLUSAO = val;
+  var btns = {
+    'nao_concluidas': document.getElementById('filtro-nao-concluidas'),
+    'concluidas':     document.getElementById('filtro-concluidas'),
+    'todas':          document.getElementById('filtro-todas')
+  };
+  Object.keys(btns).forEach(function(k) {
+    if (!btns[k]) return;
+    btns[k].style.background = k === val ? 'var(--mod-crono)' : '#fff';
+    btns[k].style.color      = k === val ? '#fff' : 'var(--mod-crono)';
+  });
+}
 
 function toggleSidebar() {
   var sb = document.getElementById('sidebar');
@@ -844,38 +875,54 @@ function detectarDesvios() {
       return 0;
     }
 
-    // Diagnóstico
-    var nBase = Object.keys(baseT).length, nTend = Object.keys(tendT).length;
-    var nParents = Object.keys(baseT).filter(function(k){ return baseT[k].isParent; }).length;
-    var nLeaves  = Object.keys(baseT).filter(function(k){ return baseT[k].isLeaf; }).length;
-    var anyKey = Object.keys(baseT).find(function(k){ return baseT[k].weeklyDates.length>0; });
-    var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
-    console.log('[Desvios] Base:', nBase, '| Pais resumo:', nParents, '| Folhas resumo:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
+    // Collect all EDT codes sorted
+    var allEdts = Object.keys(baseT).sort(sortEdt);
 
-    var desvios = [];       // leaf tasks
-    REF_ROWS = {};          // parent ref tasks (global)
-    var allSortedEdts = Object.keys(baseT).filter(function(e){
-      return baseT[e].resumo === 'sim';
-    }).sort(sortEdt);
+    // Diagnostics
+    var nBase = allEdts.length;
+    var nL1L2 = allEdts.filter(function(e){ return (e.match(/\./g)||[]).length <= 2; }).length;
+    var nLeaves = allEdts.filter(function(k){ return baseT[k].isLeaf; }).length;
+    var anyKey = allEdts.find(function(k){ return baseT[k].weeklyDates.length>0; });
+    var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
+    console.log('[Desvios] Total EDTs:', nBase, '| L1+L2 fixos:', nL1L2, '| Folhas:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
+
+    var desvios = [];
+    REF_ROWS = {};
+
+    // STEP 1: Force EDT levels 1 and 2 into REF_ROWS (always shown as context)
+    allEdts.forEach(function(edt) {
+      var dots = (edt.match(/\./g)||[]).length;
+      if (dots > 1) return;    // ref rows: EDT "1" (root) + "1.1","1.2"...
+      var bt = baseT[edt], tt = tendT[edt];
+      if (!bt || !tt || !bt.fim || !tt.fim) return;
+      var devD = Math.round((tt.fim - bt.fim) / 86400000);
+      REF_ROWS[edt] = { edt: edt, nome: bt.name,
+        fimBase: bt.fim.toISOString().slice(0,10),
+        fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
+    });
+
+    // STEP 2: Analyse leaf Resumo=Sim tasks at level 3+ with custo > 0
+    var allSortedEdts = allEdts.filter(function(e){
+      var dots = (e.match(/\./g)||[]).length;
+      return dots >= 2 && baseT[e].resumo === 'sim';
+    });
 
     allSortedEdts.forEach(function(edt) {
       var bt = baseT[edt], tt = tendT[edt];
-      if (!bt || !tt) return;
-      if (!bt.fim || !tt.fim) return;
-
-      // Parent summary: classified at parse time → reference row only
-      if (bt.isParent) {
-        var devD = Math.round((tt.fim - bt.fim) / 86400000);
-        REF_ROWS[edt] = { edt: edt, nome: bt.name,
-          fimBase: bt.fim.toISOString().slice(0,10),
-          fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
-        return;
-      }
-      // Leaf summary: apply custo > 0 filter, then analyse deviations
+      if (!bt || !tt || !bt.fim || !tt.fim) return;
+      // Skip parent summary rows at level 2+ — only level 1 items are reference rows
+      if (bt.isParent) return;
+      // Leaf: require custo > 0
       if (!bt.isLeaf) return;
       if (!bt.custo || bt.custo === 0) return;
 
       var devDias = Math.round((tt.fim - bt.fim) / 86400000);
+
+      // ── Filtro de conclusão conforme seleção do usuário ───────────────
+      var jaConcluida = tt.fim <= dataRef;
+      if (FILTRO_CONCLUSAO === 'nao_concluidas' && jaConcluida)  return;  // só não concluídas
+      if (FILTRO_CONCLUSAO === 'concluidas'     && !jaConcluida) return;  // só concluídas
+      // 'todas' → não filtra
 
       // ── Classificação por situação ──────────────────────────────────────
       // Considera apenas desvio >= 3 dias (tolerância)
@@ -1057,7 +1104,7 @@ async function registrarDesvios() {
   var dataRef = document.getElementById('crono-data-ref').value;
   var btn = document.getElementById('btn-registrar');
 
-  // Collect only checked desvios — check .checked property directly (more reliable cross-browser)
+  // Collect only checked desvios
   var desviosParaSalvar = [];
   document.querySelectorAll('.chk-desvio').forEach(function(c){
     if (c.checked) {
@@ -1067,6 +1114,7 @@ async function registrarDesvios() {
   });
   if (!desviosParaSalvar.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
 
+  // Include reference rows (level 1 and 2) sorted by EDT alongside the leaf desvios
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
     var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef + '_' + Date.now();
@@ -1137,18 +1185,23 @@ function renderCronoExistentes() {
     cardParts.push('</tr></thead><tbody>');
 
     rec.desvios.forEach(function(d) {
-      var diasCls = Math.abs(d.devDias) >= 15 ? 'dev-dias-crit' : 'dev-dias-aten';
-      var sc = {'Pendente':'b-gray','Em andamento':'b-amber','Conclu\u00edda':'b-green','Cancelada':'b-red'}[d.status] || 'b-gray';
-      cardParts.push('<tr>');
-      cardParts.push('<td>' + (SIT_LABEL[d.situacao] || d.situacao || '\u2014') + '</td>');
-      cardParts.push('<td>' + d.edt + '</td>');
-      cardParts.push('<td>' + d.nome + '</td>');
-      cardParts.push('<td class="' + diasCls + '" style="text-align:center">' + (d.devDias > 0 ? '+' : '') + d.devDias + 'd</td>');
-      cardParts.push('<td>' + (d.motivo || '<em style="color:#aaa">\u2014</em>') + '</td>');
-      cardParts.push('<td><span class="badge ' + sc + '">' + d.status + '</span></td>');
-      cardParts.push('<td>' + (d.responsavel || '\u2014') + '</td>');
-      cardParts.push('<td style="max-width:200px">' + (d.acao || '\u2014') + '</td>');
-      cardParts.push('</tr>');
+      var sitIcon  = SIT_ICON[d.situacao]  || '';
+      var sitLabel = SIT_LABEL[d.situacao] || d.situacao || '--';
+      var diasCls  = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
+      var sc = SC[d.status] || 'b-gray';
+      parts.push('<tr>');
+      parts.push('<td>'+sitIcon+' '+sitLabel+'</td>');
+      parts.push('<td>'+d.edt+'</td>');
+      parts.push('<td>'+d.nome+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimBase||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimTend||'--')+'</td>');
+      parts.push('<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>');
+      parts.push('<td>'+(d.motivo||'--')+'</td>');
+      parts.push('<td><span class="badge '+sc+'">'+d.status+'</span></td>');
+      parts.push('<td>'+(d.responsavel||'--')+'</td>');
+      parts.push('<td style="max-width:160px">'+(d.acao||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.prazo||'--')+'</td>');
+      parts.push('</tr>');
     });
 
     cardParts.push('</tbody></table></div></div>');
