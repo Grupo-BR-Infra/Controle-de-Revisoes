@@ -111,12 +111,11 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
 .footer{background:var(--ve);color:var(--dou);font-size:10px;text-align:center;padding:8px;margin-top:6px}
 
 /* ── App layout: sidebar + main ─────────────────────────────── */
-.app-layout{display:flex;min-height:calc(100vh - 120px)}
-.sidebar{width:220px;min-width:220px;background:var(--ve);transition:width .2s,min-width .2s;overflow:hidden;display:flex;flex-direction:column}
+.app-layout{display:flex;align-items:flex-start;min-height:calc(100vh - 52px)}
+.sidebar{width:220px;min-width:220px;background:var(--ve);transition:width .2s,min-width .2s;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;height:calc(100vh - 52px);overflow-y:auto}
 .sidebar.collapsed{width:52px;min-width:52px}
-.sidebar-toggle{background:none;border:none;color:var(--dou);cursor:pointer;padding:10px 14px;font-size:18px;width:100%;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.1)}
-.sidebar-toggle:hover{background:rgba(255,255,255,.08)}
-.sidebar-inner{overflow:hidden;flex:1;display:flex;flex-direction:column;gap:0}
+.sidebar-toggle{display:none}
+.sidebar-inner{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:0}
 .sidebar-section{padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,.1)}
 .sidebar-label{color:var(--dou);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;white-space:nowrap;overflow:hidden}
 .sidebar select{width:100%;padding:5px 7px;border:1px solid rgba(255,255,255,.3);border-radius:4px;font-size:12px;background:rgba(255,255,255,.1);color:#fff;font-weight:600}
@@ -128,16 +127,17 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
 .sidebar-status{font-size:10px;margin-top:4px;padding:3px 6px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sidebar-status.ok{background:rgba(46,193,141,.25);color:#8ef5cc}
 .sidebar-status.none{color:rgba(255,255,255,.4)}
-.sidebar-mod-btn{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:rgba(255,255,255,.7);padding:9px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-align:left;margin-bottom:3px;transition:background .15s}
+.sidebar-mod-btn{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:rgba(255,255,255,.7);padding:9px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-align:left;margin-bottom:3px;transition:background .15s}
 .sidebar-mod-btn:hover{background:rgba(255,255,255,.1);color:#fff}
-.sidebar-mod-btn.active{background:rgba(255,255,255,.18);color:#fff}
-.sidebar-mod-btn .mod-icon{font-size:16px;flex-shrink:0}
+.sidebar-mod-btn.active{background:rgba(255,255,255,.22);color:#fff;border-left:3px solid var(--vc)}
+.sidebar-mod-btn .mod-icon{font-size:18px;flex-shrink:0}
 .sidebar-mod-label{white-space:nowrap;overflow:hidden}
-.sidebar.collapsed .sidebar-label{opacity:0}
+.sidebar.collapsed .sidebar-label{opacity:0;height:0;overflow:hidden;padding:0}
 .sidebar.collapsed .sidebar-mod-label{display:none}
-.sidebar.collapsed .sidebar-mod-btn{justify-content:center;padding:9px}
-.sidebar.collapsed .sidebar-badge,.sidebar.collapsed .sidebar-file-label span,.sidebar.collapsed select,.sidebar.collapsed .sidebar-status{display:none}
-.main-area{flex:1;min-width:0;overflow-x:hidden}
+.sidebar.collapsed .sidebar-mod-btn{justify-content:center;padding:10px 0;border-left:none}
+.sidebar.collapsed .sidebar-badge,.sidebar.collapsed .sidebar-file-label span{display:none}
+.sidebar.collapsed select,.sidebar.collapsed .sidebar-status,.sidebar.collapsed .bd-sheets-info{display:none}
+.main-area{flex:1;min-width:0;overflow-x:hidden;overflow-y:auto;height:calc(100vh - 52px)}
 .btn-export-global{background:#7B2FBE;color:#fff;border:none;padding:7px 14px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .btn-export-global:hover{opacity:.85}
 /* ── Motivo column in comparativo ───────────────────────────── */
@@ -171,7 +171,7 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
 
   <div class="header">
     <div class="header-left">
-      <button onclick="toggleSidebar()" style="background:none;border:none;color:var(--dou);font-size:20px;cursor:pointer;padding:0 10px 0 0;line-height:1" title="Menu">☰</button>
+      <button onclick="toggleSidebar()" style="background:rgba(255,255,255,.12);border:none;color:var(--dou);font-size:18px;cursor:pointer;padding:5px 10px;border-radius:4px;line-height:1;margin-right:4px" title="Recolher/Expandir menu">☰</button>
       <div>
         <div class="header-title">BR Infra — Controle Integrado</div>
         <div class="header-sub">Cronograma &amp; Budget · grupobrinfra.com</div>
@@ -189,7 +189,6 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
   <div class="app-layout">
     <!-- ── SIDEBAR ───────────────────────────────────────────── -->
     <div class="sidebar" id="sidebar">
-      <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
       <div class="sidebar-inner">
 
         <div class="sidebar-section">
@@ -210,7 +209,7 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
           <div id="bd-sheets-info" style="font-size:9px;color:rgba(255,255,255,.4);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></div>
         </div>
 
-        <div class="sidebar-section" style="flex:1">
+        <div class="sidebar-section" style="flex:1;padding-bottom:20px">
           <div class="sidebar-label">Módulo</div>
           <button class="sidebar-mod-btn active" id="mod-btn-crono" onclick="switchModule('crono')">
             <span class="mod-icon">📅</span><span class="sidebar-mod-label">Cronograma</span>
@@ -1338,7 +1337,7 @@ async function gerarComp() {
     Object.keys(m2).forEach(function(k){if(keys.indexOf(k)<0)keys.push(k);});
     var rows=keys.map(function(k){ var v1=(m1[k]&&m1[k].val)||0,v2=(m2[k]&&m2[k].val)||0; var cd=(m1[k]||m2[k]).code,ds=(m1[k]||m2[k]).desc; return{code:cd,desc:ds,v1:v1,v2:v2,vr:v2-v1,vp:v1!==0?(v2-v1)/Math.abs(v1):0}; });
     document.getElementById('comp-info').innerHTML=revB.id+': '+revB.mesFechado+' | '+revA.id+': '+revA.mesFechado+' | Filtro: <b>'+fil+'</b>';
-    var h='<div class="scroll-x"><table class="tbl"><thead><tr><th style="width:80px">Código</th><th>Descrição</th><th class="r">'+revB.id+'</th><th class="r">'+revA.id+'</th><th class="r">Variação (R$)</th><th class="r">Var %</th><th style="text-align:center">Status</th><th style="min-width:160px">Motivo do Desvio</th></tr></thead><tbody>';
+    var h='<div class="scroll-x"><table class="tbl"><thead><tr><th style="width:80px">Código</th><th>Descrição</th><th class="r">'+revB.id+'</th><th class="r">'+revA.id+'</th><th class="r">Variação (R$)</th><th class="r">Var %</th><th style="text-align:center">Status</th></tr></thead><tbody>';
     rows.forEach(function(it,i){ var isDesp=(it.code&&it.code.slice(0,2)==='B2')||(!it.code&&it.desc.startsWith('(-)')); var bad=isDesp?(it.vr>0):(it.vr<0),neu=Math.abs(it.vr)<0.01; var cor=neu?'#888':(bad?'#B41E1E':'#0A7832'); var st=neu?'Igual':(it.vr>0?'(+) Aumento':'(-) Redução'); var niv=!it.code?0:it.code.length<=2?1:it.code.length===3?2:it.code.length===4?3:4; var isTot=(niv===1)||(it.desc.includes('Lucro L')||it.desc.includes('EBITDA')||it.desc.includes('LAIR')); var isSep=!it.code&&it.desc===it.desc.toUpperCase()&&it.desc.includes(' ')&&it.desc.length>5; var bg,fc,fw='normal'; if(isTot){bg='#103D39';fc='#fff';fw='bold';} else if(niv===2){bg='#EAF4F0';fc='#103D39';fw='bold';} else if(niv===3){bg='#F5FCF9';fw='bold';fc='inherit';} else if(isSep){bg='#C8D2CD';fc='#103D39';fw='bold';} else{bg=i%2===0?'#fff':'#EAF4F0';fc='inherit';} var vc=isTot?'#F4D19D':cor; h+='<tr style="background:'+bg+';color:'+fc+';font-weight:'+fw+'"><td style="font-size:11px">'+it.code+'</td><td>'+(it.code===''&&it.desc.startsWith('(')?'<span style="padding-left:12px">':'')+it.desc+(it.code===''&&it.desc.startsWith('(')?'</span>':'')+'</td><td class="r">'+fNum(it.v1)+'</td><td class="r">'+fNum(it.v2)+'</td><td class="r" style="color:'+vc+';font-weight:700">'+(neu?'—':(it.vr>0?'+':'')+fNum(it.vr))+'</td><td class="r" style="color:'+vc+'">'+(neu?'—':(it.vp*100).toFixed(1)+'%')+'</td><td style="text-align:center;color:'+(isTot?'#F4D19D':cor)+';font-size:11px;font-weight:700">'+st+'</td></tr>'; });
     document.getElementById('comp-table').innerHTML = h+'</tbody></table></div>';
     showMsg('Comparativo gerado: '+rows.length+' itens.','ok');
