@@ -192,15 +192,6 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
     <div id="ctab-analisar" class="panel active">
       <div class="bar crono"></div>
 
-      <!-- Registros existentes -->
-      <div id="crono-existentes-area" style="display:none;margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-          <span style="font-weight:700;color:var(--mod-crono);font-size:13px">📋 Registros salvos</span>
-          <button class="btn" style="background:#f0f0f0;color:#555;font-size:11px;padding:3px 10px" onclick="toggleExistentes()">▼ Recolher</button>
-        </div>
-        <div id="crono-existentes-content"></div>
-      </div>
-
       <!-- Nova detecção -->
       <div class="card" style="max-width:760px">
         <div style="font-weight:700;color:var(--mod-crono);margin-bottom:10px;font-size:13px">🔍 Nova Detecção</div>
@@ -593,7 +584,7 @@ function obraChanged() {
   MONTHS = ['TOTAL'].concat(allMonths);
   var ci=document.getElementById('comp-obra-info'),cn=document.getElementById('comp-obra-nome');
   if(OBRA_ATUAL){ci.style.display='flex';cn.textContent=OBRA_ATUAL;}else{ci.style.display='none';}
-  renderPainel(); renderSelects(); renderInsights(); renderCronoHistorico(); renderCronoExistentes();
+  renderPainel(); renderSelects(); renderInsights(); renderCronoHistorico();
 }
 
 function obraInputChanged() {
@@ -890,8 +881,9 @@ function renderDesviosTable() {
   ['Situação','EDT','Tarefa Resumo','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
     h += '<th class="td-crono-hdr" style="background:var(--mod-crono)">' + t + '</th>';
   });
-  // Manual headers
-  ['✓','Motivo','Responsável','Descrição do Desvio','Ação Corretiva','Prazo','Status'].forEach(function(t){
+  // Manual headers — first col is "Salvar?" checkbox with select all
+  h += '<th style="background:#1a5276;text-align:center"><input type="checkbox" id="chk-all" title="Selecionar todos" checked onchange="toggleAllDesvios(this.checked)"><br><span style="font-size:9px">Salvar?</span></th>';
+  ['Motivo','Responsável','Descrição do Desvio','Ação Corretiva','Prazo','Status'].forEach(function(t){
     h += '<th style="background:#1a5276">' + t + '</th>';
   });
   h += '</tr></thead><tbody>';
@@ -927,6 +919,10 @@ function renderDesviosTable() {
   document.getElementById('crono-desvios-area').innerHTML = h + '</tbody></table></div>';
 }
 
+function toggleAllDesvios(checked) {
+  document.querySelectorAll('.chk-desvio').forEach(function(c){ c.checked = checked; });
+}
+
 function filtrarSituacao(sit) {
   document.querySelectorAll('#tbl-desvios tbody tr').forEach(function(tr) {
     tr.style.display = (sit === 'todas' || tr.dataset.sit === sit) ? '' : 'none';
@@ -941,12 +937,21 @@ async function registrarDesvios() {
   var obs = document.getElementById('crono-obs').value.trim();
   var dataRef = document.getElementById('crono-data-ref').value;
   var btn = document.getElementById('btn-registrar');
+
+  // Collect only checked desvios
+  var checkedIdxs = [];
+  document.querySelectorAll('.chk-desvio:checked').forEach(function(c){
+    checkedIdxs.push(parseInt(c.dataset.idx));
+  });
+  if (!checkedIdxs.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
+  var desviosParaSalvar = checkedIdxs.map(function(i){ return DESVIOS_DETECTADOS[i]; });
+
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
-    var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef;
+    var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef + '_' + Date.now();
     await spCreateCrono({
       Title: titleKey, Obra: OBRA_ATUAL, DataReferencia: dataRef,
-      DadosJSON: JSON.stringify(DESVIOS_DETECTADOS),
+      DadosJSON: JSON.stringify(desviosParaSalvar),
       Observacao: obs, DataRegistro: new Date().toISOString()
     });
     await loadAll();
@@ -954,7 +959,6 @@ async function registrarDesvios() {
     DESVIOS_DETECTADOS = [];
     document.getElementById('crono-desvios-area').innerHTML = '<div class="empty">✅ Desvios registrados! Os registros aparecem acima.</div>';
     document.getElementById('crono-register-area').style.display = 'none';
-    renderCronoExistentes();
     showMsg('Desvios de ' + OBRA_ATUAL + ' registrados com sucesso!', 'ok');
   } catch(ex) { showMsg('Erro ao registrar: ' + ex.message, 'err'); }
   btn.disabled = false; btn.textContent = '💾 Registrar Desvios no SharePoint';
@@ -1075,7 +1079,7 @@ async function deleteCronoRec(titleKey) {
   try {
     var spId = SP_ITEM_MAP_C[titleKey];
     if (!spId) { showMsg('Item não encontrado.', 'err'); return; }
-    await spDeleteCrono(spId); await loadAll(); obraChanged(); renderCronoExistentes();
+    await spDeleteCrono(spId); await loadAll(); obraChanged();
     showMsg('Registro excluído.', 'ok');
   } catch(ex) { showMsg('Erro: ' + ex.message, 'err'); }
 }
