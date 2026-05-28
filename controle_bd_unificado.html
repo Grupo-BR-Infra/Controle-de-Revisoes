@@ -778,6 +778,22 @@ function detectarDesvios() {
     var baseT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoBase]);
     var tendT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoTend]);
 
+    // EDT sort helper
+    function sortEdt(a, b) {
+      var pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+      for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+        var na = pa[i]||0, nb = pb[i]||0;
+        if (na !== nb) return na - nb;
+      }
+      return 0;
+    }
+
+    // Collect all Resumo=Sim EDTs from baseT to detect parent vs leaf
+    var allResumoEdts = Object.keys(baseT).filter(function(e){ return baseT[e].resumo === 'sim'; });
+    function isParentSummary(edt) {
+      return allResumoEdts.some(function(other){ return other !== edt && other.startsWith(edt + '.'); });
+    }
+
     // Diagnóstico
     var nBase = Object.keys(baseT).length, nTend = Object.keys(tendT).length;
     var nResumoSim = Object.keys(baseT).filter(function(k){ return baseT[k].resumo==='sim'; }).length;
@@ -786,16 +802,27 @@ function detectarDesvios() {
     if (anyKey) nWeeks = baseT[anyKey].weeklyDates.length;
     console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Resumo=Sim:', nResumoSim, '| Weekly cols:', nWeeks, '| dataRef:', dataRef);
 
-    var desvios = [];
-    Object.keys(baseT).sort().forEach(function(edt) {
+    var desvios = [];       // leaf tasks — get saved to SP
+    var refRows = {};       // parent tasks — visual context only, keyed by EDT
+    var allSortedEdts = Object.keys(baseT).filter(function(e){
+      return baseT[e].resumo === 'sim';
+    }).sort(sortEdt);
+
+    allSortedEdts.forEach(function(edt) {
       var bt = baseT[edt], tt = tendT[edt];
       if (!bt || !tt) return;
-      // Filtro 1: coluna Resumo = Sim
-      if (bt.resumo !== 'sim') return;
-      // Filtro 2: custo diferente de zero no baseline
-      if (!bt.custo || bt.custo === 0) return;
-      // Filtro 3: precisa ter datas de término nas duas versões
       if (!bt.fim || !tt.fim) return;
+
+      // Parent summary: show as reference row (no deviation analysis)
+      if (isParentSummary(edt)) {
+        var devD = Math.round((tt.fim - bt.fim) / 86400000);
+        refRows[edt] = { edt: edt, nome: bt.name,
+          fimBase: bt.fim.toISOString().slice(0,10),
+          fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
+        return;
+      }
+      // Leaf: must have cost > 0
+      if (!bt.custo || bt.custo === 0) return;
 
       var devDias = Math.round((tt.fim - bt.fim) / 86400000);
 
@@ -836,9 +863,8 @@ function detectarDesvios() {
       });
     });
 
-    // Ordenar: em_atraso → tendencia_atraso → adiantada
-    var ordem = { em_atraso: 0, tendencia_atraso: 1, adiantada: 2 };
-    desvios.sort(function(a,b){ return (ordem[a.situacao]||0) - (ordem[b.situacao]||0); });
+    // Sort leaf desvios by EDT (hierarchy order)
+    desvios.sort(function(a,b){ return sortEdt(a.edt, b.edt); });
 
     DESVIOS_DETECTADOS = desvios;
     renderDesviosTable();
@@ -863,8 +889,7 @@ function renderDesviosTable() {
     'Interferência de terceiros','Interferência de concessionárias','Atraso em licença / aprovação',
     'Problema logístico / acesso','Alteração de escopo','Outro'];
 
-  // Filtro de situação
-  var filtroSit = 'todas';
+  // Count by situação
   var nAt  = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='em_atraso'; }).length;
   var nTen = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='tendencia_atraso'; }).length;
   var nAdj = DESVIOS_DETECTADOS.filter(function(d){ return d.situacao==='adiantada'; }).length;
@@ -878,25 +903,66 @@ function renderDesviosTable() {
 
   h += '<div class="scroll-x"><table class="tbl crono" id="tbl-desvios"><thead><tr>';
   // Auto headers
-  ['Situação','EDT','Tarefa Resumo','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
+  ['Tipo','EDT','Tarefa','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
     h += '<th class="td-crono-hdr" style="background:var(--mod-crono)">' + t + '</th>';
   });
   // Manual headers — first col is "Salvar?" checkbox with select all
   h += '<th style="background:#1a5276;text-align:center"><input type="checkbox" id="chk-all" title="Selecionar todos" checked onchange="toggleAllDesvios(this.checked)"><br><span style="font-size:9px">Salvar?</span></th>';
-  ['Motivo','Responsável','Descrição do Desvio','Ação Corretiva','Prazo','Status'].forEach(function(t){
+  ['Motivo','Responsável','Descrição','Ação Corretiva','Prazo','Status'].forEach(function(t){
     h += '<th style="background:#1a5276">' + t + '</th>';
   });
   h += '</tr></thead><tbody>';
 
+  // ── Build rows interleaved: parent refs + leaf desvios sorted by EDT ──
+  var allRows = [];
+  // Add parent ref rows
+  Object.keys(refRows).forEach(function(edt){
+    allRows.push({ type: 'ref', data: refRows[edt] });
+  });
+  // Add leaf desvio rows with their index in DESVIOS_DETECTADOS
+  DESVIOS_DETECTADOS.forEach(function(d, i){
+    allRows.push({ type: 'leaf', data: d, idx: i });
+  });
+  // Sort everything by EDT
+  allRows.sort(function(a,b){
+    var ea = a.data.edt, eb = b.data.edt;
+    var pa = ea.split('.').map(Number), pb = eb.split('.').map(Number);
+    for (var i = 0; i < Math.max(pa.length,pb.length); i++){
+      var na=pa[i]||0, nb=pb[i]||0; if(na!==nb) return na-nb;
+    }
+    return 0;
+  });
+  // Render using allRows — override the forEach below
+  var _useAllRows = true;
+
   var SIT_LABEL = { em_atraso: '<span style="color:#922B21;font-weight:700">🔴 Em Atraso</span>', tendencia_atraso: '<span style="color:#784212;font-weight:700">🟡 Tendência</span>', adiantada: '<span style="color:#1E8449;font-weight:700">🟢 Adiantada</span>' };
   var SIT_ROW   = { em_atraso: 'background:#FDEDEC', tendencia_atraso: 'background:#FEFDE7', adiantada: 'background:#EAFAF1' };
 
-  DESVIOS_DETECTADOS.forEach(function(d, i) {
+  allRows.forEach(function(row) {
+    var d = row.data, i = row.idx;
+
+    if (row.type === 'ref') {
+      // ── Parent / Reference row ─────────────────────────────────────
+      var diasCls = Math.abs(d.devDias)>=15?'dev-dias-crit':'dev-dias-aten';
+      var nCols = 17; // total columns
+      h += '<tr style="background:#EAF0FB;border-left:3px solid #2980B9">';
+      h += '<td class="td-auto" style="color:#1a5276;font-weight:700;font-size:11px;white-space:nowrap">';
+      h += '📂 Referência</td>';
+      h += '<td class="td-auto" style="color:#1a5276;font-weight:700">'+d.edt+'</td>';
+      h += '<td class="td-auto" colspan="8" style="color:#1a5276;font-weight:700">'+d.nome;
+      if(d.devDias!==0) h += ' <span class="'+diasCls+'" style="font-size:11px;margin-left:8px">'+(d.devDias>0?'+':'')+d.devDias+'d</span>';
+      h += '</td>';
+      h += '<td colspan="7" style="background:#EAF0FB;text-align:center;color:#7f8c8d;font-size:11px;font-style:italic">apenas informativo</td>';
+      h += '</tr>';
+      return;
+    }
+
+    // ── Leaf / Analysis row ────────────────────────────────────────
     var diasCls = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
 
     h += '<tr data-sit="'+d.situacao+'" style="'+SIT_ROW[d.situacao]+'">';
     h += '<td class="td-auto" style="text-align:center;white-space:nowrap">' + (SIT_LABEL[d.situacao]||d.situacao) + '</td>';
-    h += '<td class="td-auto">' + d.edt + '</td>';
+    h += '<td class="td-auto" style="padding-left:20px">' + d.edt + '</td>';
     h += '<td class="td-auto">' + d.nome + '</td>';
     h += '<td class="td-auto" style="text-align:center">' + (d.fimBase||'-') + '</td>';
     h += '<td class="td-auto" style="text-align:center">' + (d.fimTend||'-') + '</td>';
@@ -925,6 +991,8 @@ function toggleAllDesvios(checked) {
 
 function filtrarSituacao(sit) {
   document.querySelectorAll('#tbl-desvios tbody tr').forEach(function(tr) {
+    // Reference rows always visible; leaf rows filtered by situation
+    if (!tr.dataset.sit) return; // ref row — keep visible
     tr.style.display = (sit === 'todas' || tr.dataset.sit === sit) ? '' : 'none';
   });
 }
