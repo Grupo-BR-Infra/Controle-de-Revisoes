@@ -193,9 +193,8 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
             <input type="date" id="crono-data-ref" style="width:180px">
             <div style="font-size:10px;color:#888;margin-top:3px">Use uma data de domingo correspondente às semanas do cronograma</div>
           </div>
-          <div>
-            <label class="lbl">Nível EDT (1 = pacotes 1.1 / 1.2...)</label>
-            <input type="number" id="crono-nivel" value="1" min="1" max="3" style="width:80px">
+          <div style="background:#e8f5e9;border-radius:5px;padding:6px 12px;font-size:12px;color:#1e8449;align-self:center">
+            ✅ Filtro: coluna <strong>Resumo = Sim</strong> + custo &gt; 0
           </div>
           <button class="btn btn-crono" onclick="detectarDesvios()" id="btn-detectar">🔍 Detectar Desvios</button>
         </div>
@@ -667,8 +666,8 @@ function parseBudgetSheet(ws) {
 //  CRONOGRAMA — DETECTION
 // ════════════════════════════════════════════════
 function parseCronoSheet(ws) {
-  // Use raw:true to get serial numbers; wb was loaded with cellDates:true
-  // so date cells may arrive as Date objects OR serial numbers — handle both
+  // Estrutura das colunas:
+  // A=EDT  B=Task Name  C=Custo  D=Duração  E=Início  F=Término  G=Resumo  H+=semanas
   var rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
   var hdr = rows[0];
 
@@ -680,9 +679,19 @@ function parseCronoSheet(ws) {
     return null;
   }
 
-  // Find weekly columns (Date objects or serial numbers in header)
+  // Detectar coluna "Resumo" — busca no cabeçalho (col G = índice 6, mas verifica)
+  var resumoColIdx = -1;
+  for (var c = 0; c < Math.min(hdr.length, 10); c++) {
+    if (hdr[c] && String(hdr[c]).toLowerCase().includes('resumo')) {
+      resumoColIdx = c; break;
+    }
+  }
+  // Se não achou no cabeçalho, assume col G (índice 6) por padrão
+  if (resumoColIdx < 0) resumoColIdx = 6;
+
+  // Colunas semanais: tudo após a coluna Resumo que seja data
   var weeklyIdx = [], weeklyDates = [];
-  for (var c = 6; c < hdr.length; c++) {
+  for (var c = resumoColIdx + 1; c < hdr.length; c++) {
     var d = toDate(hdr[c]);
     if (d) { weeklyIdx.push(c); weeklyDates.push(d); }
   }
@@ -692,11 +701,13 @@ function parseCronoSheet(ws) {
     var row = rows[r]; if (!row) continue;
     var edt = row[0] ? String(row[0]).trim() : '';
     if (!edt || edt === 'EDT') continue;
+    var resumoVal = row[resumoColIdx] ? String(row[resumoColIdx]).trim().toLowerCase() : '';
     tasks[edt] = {
-      name:  row[1] ? String(row[1]).trim() : '',
-      custo: row[2] || 0,
-      fim:   toDate(row[5]),
-      weekly: weeklyIdx.map(function(ci){ return (typeof row[ci]==='number' ? row[ci] : 0); }),
+      name:    row[1] ? String(row[1]).trim() : '',
+      custo:   typeof row[2] === 'number' ? row[2] : 0,
+      fim:     toDate(row[5]),
+      resumo:  resumoVal,   // 'sim' | 'não' | ''
+      weekly:  weeklyIdx.map(function(ci){ return (typeof row[ci]==='number' ? row[ci] : 0); }),
       weeklyDates: weeklyDates
     };
   }
@@ -711,25 +722,29 @@ function detectarDesvios() {
   if (!dataRefStr) { showMsg('Informe a data de referência.', 'err'); return; }
   // Parse date at noon UTC to avoid timezone day-shift issues
   var dataRef = new Date(dataRefStr + 'T12:00:00Z');
-  var nivel = parseInt(document.getElementById('crono-nivel').value) || 1;
+  // Filtro agora usa coluna Resumo do BD (não mais nível EDT)
 
   try {
     var wb = BD_DATA.wb;
     var baseT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoBase]);
     var tendT = parseCronoSheet(wb.Sheets[BD_DATA.snCronoTend]);
 
-    // Diagnostic: count tasks and weekly cols found
-    var nBase = Object.keys(baseT).length;
-    var nTend = Object.keys(tendT).length;
-    var sampleKey = Object.keys(baseT).find(function(k){ return k.split('.').length-1===nivel; });
-    var nWeeks = sampleKey ? baseT[sampleKey].weeklyDates.length : 0;
-    console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Weekly cols:', nWeeks, '| nivel:', nivel, '| dataRef:', dataRef);
+    // Diagnóstico
+    var nBase = Object.keys(baseT).length, nTend = Object.keys(tendT).length;
+    var nResumoSim = Object.keys(baseT).filter(function(k){ return baseT[k].resumo==='sim'; }).length;
+    var nWeeks = 0;
+    var anyKey = Object.keys(baseT).find(function(k){ return baseT[k].weeklyDates.length>0; });
+    if (anyKey) nWeeks = baseT[anyKey].weeklyDates.length;
+    console.log('[Desvios] Base tasks:', nBase, '| Tend tasks:', nTend, '| Resumo=Sim:', nResumoSim, '| Weekly cols:', nWeeks, '| dataRef:', dataRef);
 
     var desvios = [];
     Object.keys(baseT).sort().forEach(function(edt) {
-      if (edt.split('.').length - 1 !== nivel) return;
       var bt = baseT[edt], tt = tendT[edt];
       if (!bt || !tt) return;
+      // Filtro 1: coluna Resumo = Sim
+      if (bt.resumo !== 'sim') return;
+      // Filtro 2: custo diferente de zero no baseline
+      if (!bt.custo || bt.custo === 0) return;
 
       // Cumulative cost up to dataRef
       var cumB = 0, cumT = 0;
