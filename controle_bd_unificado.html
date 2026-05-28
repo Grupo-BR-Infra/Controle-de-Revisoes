@@ -878,8 +878,14 @@ function detectarDesvios() {
     allSortedEdts.forEach(function(edt) {
       var bt = baseT[edt], tt = tendT[edt];
       if (!bt || !tt || !bt.fim || !tt.fim) return;
-      // Skip parent summary rows at level 2+ — only level 1 items are reference rows
-      if (bt.isParent) return;
+      // Parent at this level → additional reference row
+      if (bt.isParent) {
+        var devD = Math.round((tt.fim - bt.fim) / 86400000);
+        REF_ROWS[edt] = { edt: edt, nome: bt.name,
+          fimBase: bt.fim.toISOString().slice(0,10),
+          fimTend: tt.fim.toISOString().slice(0,10), devDias: devD };
+        return;
+      }
       // Leaf: require custo > 0
       if (!bt.isLeaf) return;
       if (!bt.custo || bt.custo === 0) return;
@@ -1066,7 +1072,7 @@ async function registrarDesvios() {
   var dataRef = document.getElementById('crono-data-ref').value;
   var btn = document.getElementById('btn-registrar');
 
-  // Collect only checked desvios
+  // Collect only checked desvios — check .checked property directly (more reliable cross-browser)
   var desviosParaSalvar = [];
   document.querySelectorAll('.chk-desvio').forEach(function(c){
     if (c.checked) {
@@ -1076,7 +1082,6 @@ async function registrarDesvios() {
   });
   if (!desviosParaSalvar.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
 
-  // Include reference rows (level 1 and 2) sorted by EDT alongside the leaf desvios
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
     var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef + '_' + Date.now();
@@ -1147,23 +1152,18 @@ function renderCronoExistentes() {
     cardParts.push('</tr></thead><tbody>');
 
     rec.desvios.forEach(function(d) {
-      var sitIcon  = SIT_ICON[d.situacao]  || '';
-      var sitLabel = SIT_LABEL[d.situacao] || d.situacao || '--';
-      var diasCls  = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
-      var sc = SC[d.status] || 'b-gray';
-      parts.push('<tr>');
-      parts.push('<td>'+sitIcon+' '+sitLabel+'</td>');
-      parts.push('<td>'+d.edt+'</td>');
-      parts.push('<td>'+d.nome+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimBase||'--')+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimTend||'--')+'</td>');
-      parts.push('<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>');
-      parts.push('<td>'+(d.motivo||'--')+'</td>');
-      parts.push('<td><span class="badge '+sc+'">'+d.status+'</span></td>');
-      parts.push('<td>'+(d.responsavel||'--')+'</td>');
-      parts.push('<td style="max-width:160px">'+(d.acao||'--')+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.prazo||'--')+'</td>');
-      parts.push('</tr>');
+      var diasCls = Math.abs(d.devDias) >= 15 ? 'dev-dias-crit' : 'dev-dias-aten';
+      var sc = {'Pendente':'b-gray','Em andamento':'b-amber','Conclu\u00edda':'b-green','Cancelada':'b-red'}[d.status] || 'b-gray';
+      cardParts.push('<tr>');
+      cardParts.push('<td>' + (SIT_LABEL[d.situacao] || d.situacao || '\u2014') + '</td>');
+      cardParts.push('<td>' + d.edt + '</td>');
+      cardParts.push('<td>' + d.nome + '</td>');
+      cardParts.push('<td class="' + diasCls + '" style="text-align:center">' + (d.devDias > 0 ? '+' : '') + d.devDias + 'd</td>');
+      cardParts.push('<td>' + (d.motivo || '<em style="color:#aaa">\u2014</em>') + '</td>');
+      cardParts.push('<td><span class="badge ' + sc + '">' + d.status + '</span></td>');
+      cardParts.push('<td>' + (d.responsavel || '\u2014') + '</td>');
+      cardParts.push('<td style="max-width:200px">' + (d.acao || '\u2014') + '</td>');
+      cardParts.push('</tr>');
     });
 
     cardParts.push('</tbody></table></div></div>');
