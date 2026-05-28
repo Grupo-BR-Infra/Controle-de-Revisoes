@@ -966,50 +966,71 @@ function toggleExistentes() {
   var el = document.getElementById('crono-existentes-content');
   var btn = document.querySelector('#crono-existentes-area button');
   el.style.display = _existentesRecolhido ? 'none' : '';
-  btn.textContent = _existentesRecolhido ? '▶ Expandir' : '▼ Recolher';
+  btn.textContent = _existentesRecolhido ? '\u25b6 Expandir' : '\u25bc Recolher';
 }
+
+// Store titleKeys for delete buttons (avoids onclick string quote issues)
+var _cronoDeleteKeys = [];
+function _deleteCronoByIdx(idx) { deleteCronoRec(_cronoDeleteKeys[idx]); }
 
 function renderCronoExistentes() {
   var area = document.getElementById('crono-existentes-area');
   var el   = document.getElementById('crono-existentes-content');
   if (!OBRA_ATUAL || !DESVIOS_OBRA.length) { area.style.display = 'none'; return; }
   area.style.display = 'block';
+  _cronoDeleteKeys = [];
 
-  var SIT_LABEL = { em_atraso: '🔴 Em Atraso', tendencia_atraso: '🟡 Tendência', adiantada: '🟢 Adiantada' };
+  var SIT_LABEL = {
+    em_atraso: '\ud83d\udd34 Em Atraso',
+    tendencia_atraso: '\ud83d\udfe1 Tend\u00eancia',
+    adiantada: '\ud83d\udfe2 Adiantada'
+  };
 
-  var h = '';
-  DESVIOS_OBRA.slice().reverse().forEach(function(rec) {
-    var crit = rec.desvios.filter(function(d){ return Math.abs(d.devDias)>=15; }).length;
-    h += '<div class="card" style="margin-bottom:8px;border-left:3px solid var(--mod-crono)">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
-    h += '<div style="font-size:12px"><strong style="color:var(--mod-crono)">Ref: '+rec.dataRef+'</strong>';
-    if(rec.obs) h += ' <span style="color:#888">— '+rec.obs+'</span>';
-    h += '</div>';
-    h += '<div style="display:flex;gap:6px;align-items:center">';
-    if(crit) h += '<span class="badge b-red">'+crit+' crítico(s)</span>';
-    h += '<span style="font-size:10px;color:#aaa">'+new Date(rec.date).toLocaleDateString('pt-BR')+'</span>';
-    h += '<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" onclick="deleteCronoRec(\\''+rec.titleKey+'\\')">Excluir</button>';
-    h += '</div></div>';
-    h += '<div class="scroll-x" style="margin-top:8px"><table class="tbl crono" style="font-size:11px"><thead><tr>';
-    h += '<th>Situação</th><th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Responsável</th><th>Ação Corretiva</th>';
-    h += '</tr></thead><tbody>';
-    rec.desvios.forEach(function(d){
-      var diasCls = Math.abs(d.devDias)>=15?'dev-dias-crit':'dev-dias-aten';
-      var sc={'Pendente':'b-gray','Em andamento':'b-amber','Concluída':'b-green','Cancelada':'b-red'}[d.status]||'b-gray';
-      h += '<tr>';
-      h += '<td>'+(SIT_LABEL[d.situacao]||d.situacao||'—')+'</td>';
-      h += '<td>'+d.edt+'</td>';
-      h += '<td>'+d.nome+'</td>';
-      h += '<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>';
-      h += '<td>'+(d.motivo||'<em style="color:#aaa">—</em>')+'</td>';
-      h += '<td><span class="badge '+sc+'">'+d.status+'</span></td>';
-      h += '<td>'+(d.responsavel||'—')+'</td>';
-      h += '<td style="max-width:200px">'+(d.acao||'—')+'</td>';
-      h += '</tr>';
+  var rows = [];
+  var allRecs = DESVIOS_OBRA.slice().reverse();
+
+  allRecs.forEach(function(rec, ri) {
+    var keyIdx = _cronoDeleteKeys.length;
+    _cronoDeleteKeys.push(rec.titleKey);
+    var crit = rec.desvios.filter(function(d){ return Math.abs(d.devDias) >= 15; }).length;
+
+    var cardParts = [];
+    cardParts.push('<div class="card" style="margin-bottom:8px;border-left:3px solid var(--mod-crono)">');
+    cardParts.push('<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">');
+    cardParts.push('<div style="font-size:12px"><strong style="color:var(--mod-crono)">Ref: ' + rec.dataRef + '</strong>');
+    if (rec.obs) cardParts.push(' <span style="color:#888">\u2014 ' + rec.obs + '</span>');
+    cardParts.push('</div>');
+    cardParts.push('<div style="display:flex;gap:6px;align-items:center">');
+    if (crit) cardParts.push('<span class="badge b-red">' + crit + ' cr\u00edtico(s)</span>');
+    cardParts.push('<span style="font-size:10px;color:#aaa">' + new Date(rec.date).toLocaleDateString('pt-BR') + '</span>');
+    cardParts.push('<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" data-kidx="' + keyIdx + '" onclick="_deleteCronoByIdx(parseInt(this.dataset.kidx))">Excluir</button>');
+    cardParts.push('</div></div>');
+
+    cardParts.push('<div class="scroll-x" style="margin-top:8px">');
+    cardParts.push('<table class="tbl crono" style="font-size:11px"><thead><tr>');
+    cardParts.push('<th>Situa\u00e7\u00e3o</th><th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Respons\u00e1vel</th><th>A\u00e7\u00e3o Corretiva</th>');
+    cardParts.push('</tr></thead><tbody>');
+
+    rec.desvios.forEach(function(d) {
+      var diasCls = Math.abs(d.devDias) >= 15 ? 'dev-dias-crit' : 'dev-dias-aten';
+      var sc = {'Pendente':'b-gray','Em andamento':'b-amber','Conclu\u00edda':'b-green','Cancelada':'b-red'}[d.status] || 'b-gray';
+      cardParts.push('<tr>');
+      cardParts.push('<td>' + (SIT_LABEL[d.situacao] || d.situacao || '\u2014') + '</td>');
+      cardParts.push('<td>' + d.edt + '</td>');
+      cardParts.push('<td>' + d.nome + '</td>');
+      cardParts.push('<td class="' + diasCls + '" style="text-align:center">' + (d.devDias > 0 ? '+' : '') + d.devDias + 'd</td>');
+      cardParts.push('<td>' + (d.motivo || '<em style="color:#aaa">\u2014</em>') + '</td>');
+      cardParts.push('<td><span class="badge ' + sc + '">' + d.status + '</span></td>');
+      cardParts.push('<td>' + (d.responsavel || '\u2014') + '</td>');
+      cardParts.push('<td style="max-width:200px">' + (d.acao || '\u2014') + '</td>');
+      cardParts.push('</tr>');
     });
-    h += '</tbody></table></div></div>';
+
+    cardParts.push('</tbody></table></div></div>');
+    rows.push(cardParts.join(''));
   });
-  el.innerHTML = h;
+
+  el.innerHTML = rows.join('');
 }
 
 function renderCronoHistorico() {
