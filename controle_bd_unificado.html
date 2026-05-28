@@ -191,28 +191,41 @@ td.dev-dias-aten{color:#784212 !important;font-weight:700}
     <!-- ANALISAR -->
     <div id="ctab-analisar" class="panel active">
       <div class="bar crono"></div>
-      <div class="card" style="max-width:640px">
+
+      <!-- Registros existentes -->
+      <div id="crono-existentes-area" style="display:none;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <span style="font-weight:700;color:var(--mod-crono);font-size:13px">📋 Registros salvos</span>
+          <button class="btn" style="background:#f0f0f0;color:#555;font-size:11px;padding:3px 10px" onclick="toggleExistentes()">▼ Recolher</button>
+        </div>
+        <div id="crono-existentes-content"></div>
+      </div>
+
+      <!-- Nova detecção -->
+      <div class="card" style="max-width:760px">
+        <div style="font-weight:700;color:var(--mod-crono);margin-bottom:10px;font-size:13px">🔍 Nova Detecção</div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
           <div style="flex:1;min-width:200px">
             <label class="lbl">Data de Referência</label>
             <input type="date" id="crono-data-ref" style="width:180px">
-            <div style="font-size:10px;color:#888;margin-top:3px">Use uma data de domingo correspondente às semanas do cronograma</div>
+            <div style="font-size:10px;color:#888;margin-top:3px">Use uma data de domingo das semanas do cronograma</div>
           </div>
           <div style="background:#e8f5e9;border-radius:5px;padding:6px 12px;font-size:12px;color:#1e8449;align-self:center">
-            ✅ Filtro: coluna <strong>Resumo = Sim</strong> + custo &gt; 0
+            ✅ Resumo = Sim &amp; custo &gt; 0
           </div>
-          <button class="btn btn-crono" onclick="detectarDesvios()" id="btn-detectar">🔍 Detectar Desvios</button>
+          <button class="btn btn-crono" onclick="detectarDesvios()" id="btn-detectar">🔍 Detectar</button>
+        </div>
+        <!-- Registrar button — acima da tabela, visível assim que há desvios -->
+        <div id="crono-register-area" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--gc)">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="crono-obs" placeholder="Observação sobre este registro (opcional)" style="flex:1;min-width:200px">
+            <button class="btn btn-crono" onclick="registrarDesvios()" id="btn-registrar">💾 Registrar no SharePoint</button>
+          </div>
         </div>
       </div>
-      <div id="crono-desvios-area"><div class="empty">Carregue o arquivo BD e clique em "Detectar Desvios" para começar.</div></div>
-      <div id="crono-register-area" style="display:none;margin-top:10px">
-        <div class="card" style="max-width:640px">
-          <label class="lbl">Observação (opcional)</label>
-          <input type="text" id="crono-obs" placeholder="Comentário sobre este registro de desvios">
-          <div style="margin-top:10px;display:flex;gap:8px">
-            <button class="btn btn-crono" onclick="registrarDesvios()" id="btn-registrar">💾 Registrar Desvios no SharePoint</button>
-          </div>
-        </div>
+
+      <div id="crono-desvios-area" style="margin-top:10px">
+        <div class="empty">Carregue o arquivo BD e clique em "Detectar" para começar.</div>
       </div>
     </div>
 
@@ -580,7 +593,7 @@ function obraChanged() {
   MONTHS = ['TOTAL'].concat(allMonths);
   var ci=document.getElementById('comp-obra-info'),cn=document.getElementById('comp-obra-nome');
   if(OBRA_ATUAL){ci.style.display='flex';cn.textContent=OBRA_ATUAL;}else{ci.style.display='none';}
-  renderPainel(); renderSelects(); renderInsights(); renderCronoHistorico();
+  renderPainel(); renderSelects(); renderInsights(); renderCronoHistorico(); renderCronoExistentes();
 }
 
 function obraInputChanged() {
@@ -939,11 +952,64 @@ async function registrarDesvios() {
     await loadAll();
     document.getElementById('obra-global').value = OBRA_ATUAL; obraChanged();
     DESVIOS_DETECTADOS = [];
-    document.getElementById('crono-desvios-area').innerHTML = '<div class="empty">Desvios registrados com sucesso! Veja o histórico na aba "Histórico".</div>';
+    document.getElementById('crono-desvios-area').innerHTML = '<div class="empty">✅ Desvios registrados! Os registros aparecem acima.</div>';
     document.getElementById('crono-register-area').style.display = 'none';
+    renderCronoExistentes();
     showMsg('Desvios de ' + OBRA_ATUAL + ' registrados com sucesso!', 'ok');
   } catch(ex) { showMsg('Erro ao registrar: ' + ex.message, 'err'); }
   btn.disabled = false; btn.textContent = '💾 Registrar Desvios no SharePoint';
+}
+
+var _existentesRecolhido = false;
+function toggleExistentes() {
+  _existentesRecolhido = !_existentesRecolhido;
+  var el = document.getElementById('crono-existentes-content');
+  var btn = document.querySelector('#crono-existentes-area button');
+  el.style.display = _existentesRecolhido ? 'none' : '';
+  btn.textContent = _existentesRecolhido ? '▶ Expandir' : '▼ Recolher';
+}
+
+function renderCronoExistentes() {
+  var area = document.getElementById('crono-existentes-area');
+  var el   = document.getElementById('crono-existentes-content');
+  if (!OBRA_ATUAL || !DESVIOS_OBRA.length) { area.style.display = 'none'; return; }
+  area.style.display = 'block';
+
+  var SIT_LABEL = { em_atraso: '🔴 Em Atraso', tendencia_atraso: '🟡 Tendência', adiantada: '🟢 Adiantada' };
+
+  var h = '';
+  DESVIOS_OBRA.slice().reverse().forEach(function(rec) {
+    var crit = rec.desvios.filter(function(d){ return Math.abs(d.devDias)>=15; }).length;
+    h += '<div class="card" style="margin-bottom:8px;border-left:3px solid var(--mod-crono)">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
+    h += '<div style="font-size:12px"><strong style="color:var(--mod-crono)">Ref: '+rec.dataRef+'</strong>';
+    if(rec.obs) h += ' <span style="color:#888">— '+rec.obs+'</span>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:6px;align-items:center">';
+    if(crit) h += '<span class="badge b-red">'+crit+' crítico(s)</span>';
+    h += '<span style="font-size:10px;color:#aaa">'+new Date(rec.date).toLocaleDateString('pt-BR')+'</span>';
+    h += '<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" onclick="deleteCronoRec(''+rec.titleKey+'')">Excluir</button>';
+    h += '</div></div>';
+    h += '<div class="scroll-x" style="margin-top:8px"><table class="tbl crono" style="font-size:11px"><thead><tr>';
+    h += '<th>Situação</th><th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Responsável</th><th>Ação Corretiva</th>';
+    h += '</tr></thead><tbody>';
+    rec.desvios.forEach(function(d){
+      var diasCls = Math.abs(d.devDias)>=15?'dev-dias-crit':'dev-dias-aten';
+      var sc={'Pendente':'b-gray','Em andamento':'b-amber','Concluída':'b-green','Cancelada':'b-red'}[d.status]||'b-gray';
+      h += '<tr>';
+      h += '<td>'+(SIT_LABEL[d.situacao]||d.situacao||'—')+'</td>';
+      h += '<td>'+d.edt+'</td>';
+      h += '<td>'+d.nome+'</td>';
+      h += '<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>';
+      h += '<td>'+(d.motivo||'<em style="color:#aaa">—</em>')+'</td>';
+      h += '<td><span class="badge '+sc+'">'+d.status+'</span></td>';
+      h += '<td>'+(d.responsavel||'—')+'</td>';
+      h += '<td style="max-width:200px">'+(d.acao||'—')+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div></div>';
+  });
+  el.innerHTML = h;
 }
 
 function renderCronoHistorico() {
@@ -988,7 +1054,7 @@ async function deleteCronoRec(titleKey) {
   try {
     var spId = SP_ITEM_MAP_C[titleKey];
     if (!spId) { showMsg('Item não encontrado.', 'err'); return; }
-    await spDeleteCrono(spId); await loadAll(); obraChanged();
+    await spDeleteCrono(spId); await loadAll(); obraChanged(); renderCronoExistentes();
     showMsg('Registro excluído.', 'ok');
   } catch(ex) { showMsg('Erro: ' + ex.message, 'err'); }
 }
