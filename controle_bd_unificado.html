@@ -905,8 +905,8 @@ function renderDesviosTable() {
     h += '<td class="td-auto r">R$ ' + fNum(d.cumTend) + '</td>';
     h += '<td class="td-auto r">' + (d.devRS>0?'+':'') + 'R$ ' + fNum(d.devRS) + '</td>';
     h += '<td class="td-auto r">' + (d.devPct>0?'+':'') + d.devPct + '%</td>';
-    // Manual editable
-    h += '<td class="td-edit"><input type="checkbox" onchange="updDesvio('+i+',\'confirmado\',this.checked)"' + (d.confirmado?' checked':'') + '></td>';
+    // Salvar? checkbox — checked by default, user deselects to exclude
+    h += '<td class="td-edit" style="text-align:center"><input type="checkbox" class="chk-desvio" data-idx="'+i+'" checked></td>';
     h += '<td class="td-edit"><select onchange="updDesvio('+i+',\'motivo\',this.value)">' + MOTIVOS.map(function(m){ return '<option value="'+m+'"'+(m===d.motivo?' selected':'')+'>'+m+'</option>'; }).join('') + '</select></td>';
     h += '<td class="td-edit"><input type="text" value="' + (d.responsavel||'') + '" placeholder="Nome" onchange="updDesvio('+i+',\'responsavel\',this.value)"></td>';
     h += '<td class="td-edit"><input type="text" value="' + (d.descricao||'') + '" placeholder="Descreva o desvio" onchange="updDesvio('+i+',\'descricao\',this.value)" style="min-width:200px"></td>';
