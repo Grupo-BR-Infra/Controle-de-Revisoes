@@ -880,7 +880,6 @@ function detectarDesvios() {
       if (!bt || !tt || !bt.fim || !tt.fim) return;
       // Skip parent summary rows at level 2+ — only level 1 items are reference rows
       if (bt.isParent) return;
-      }
       // Leaf: require custo > 0
       if (!bt.isLeaf) return;
       if (!bt.custo || bt.custo === 0) return;
