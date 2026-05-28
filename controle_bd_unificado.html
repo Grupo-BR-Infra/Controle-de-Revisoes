@@ -1072,7 +1072,7 @@ async function registrarDesvios() {
   var dataRef = document.getElementById('crono-data-ref').value;
   var btn = document.getElementById('btn-registrar');
 
-  // Collect only checked desvios — check .checked property directly (more reliable cross-browser)
+  // Collect only checked desvios
   var desviosParaSalvar = [];
   document.querySelectorAll('.chk-desvio').forEach(function(c){
     if (c.checked) {
@@ -1082,12 +1082,29 @@ async function registrarDesvios() {
   });
   if (!desviosParaSalvar.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
 
+  // Include reference rows (level 1 and 2) sorted by EDT alongside the leaf desvios
+  function sortEdt2(a, b) {
+    var pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+    for (var i = 0; i < Math.max(pa.length,pb.length); i++) {
+      var na=pa[i]||0, nb=pb[i]||0; if(na!==nb) return na-nb;
+    }
+    return 0;
+  }
+  var refList = Object.keys(REF_ROWS).sort(sortEdt2).map(function(edt){
+    return Object.assign({}, REF_ROWS[edt], { type: 'ref' });
+  });
+
+  // Merge: ref rows + leaf desvios, sorted by EDT
+  var allParaSalvar = refList.concat(desviosParaSalvar.map(function(d){
+    return Object.assign({}, d, { type: 'leaf' });
+  })).sort(function(a,b){ return sortEdt2(a.edt, b.edt); });
+
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
     var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef + '_' + Date.now();
     await spCreateCrono({
       Title: titleKey, Obra: OBRA_ATUAL, DataReferencia: dataRef,
-      DadosJSON: JSON.stringify(desviosParaSalvar),
+      DadosJSON: JSON.stringify(allParaSalvar),
       Observacao: obs, DataRegistro: new Date().toISOString()
     });
     await loadAll();
@@ -1152,18 +1169,34 @@ function renderCronoExistentes() {
     cardParts.push('</tr></thead><tbody>');
 
     rec.desvios.forEach(function(d) {
-      var diasCls = Math.abs(d.devDias) >= 15 ? 'dev-dias-crit' : 'dev-dias-aten';
-      var sc = {'Pendente':'b-gray','Em andamento':'b-amber','Conclu\u00edda':'b-green','Cancelada':'b-red'}[d.status] || 'b-gray';
-      cardParts.push('<tr>');
-      cardParts.push('<td>' + (SIT_LABEL[d.situacao] || d.situacao || '\u2014') + '</td>');
-      cardParts.push('<td>' + d.edt + '</td>');
-      cardParts.push('<td>' + d.nome + '</td>');
-      cardParts.push('<td class="' + diasCls + '" style="text-align:center">' + (d.devDias > 0 ? '+' : '') + d.devDias + 'd</td>');
-      cardParts.push('<td>' + (d.motivo || '<em style="color:#aaa">\u2014</em>') + '</td>');
-      cardParts.push('<td><span class="badge ' + sc + '">' + d.status + '</span></td>');
-      cardParts.push('<td>' + (d.responsavel || '\u2014') + '</td>');
-      cardParts.push('<td style="max-width:200px">' + (d.acao || '\u2014') + '</td>');
-      cardParts.push('</tr>');
+      if (d.type === 'ref') {
+        var diasCls2 = Math.abs(d.devDias||0)>=15?'dev-dias-crit':'dev-dias-aten';
+        parts.push('<tr style="background:#EAF0FB;border-left:3px solid #2980B9">');
+        parts.push('<td style="color:#1a5276;font-weight:700;font-size:11px">&#128194; Ref.</td>');
+        parts.push('<td style="color:#1a5276;font-weight:700">'+d.edt+'</td>');
+        parts.push('<td colspan="3" style="color:#1a5276;font-weight:700">'+d.nome+'</td>');
+        parts.push('<td class="'+diasCls2+'" style="text-align:center">'+(d.devDias>0?'+':'')+(d.devDias||0)+'d</td>');
+        parts.push('<td colspan="5" style="color:#888;font-size:11px;font-style:italic">informativo</td>');
+        parts.push('</tr>');
+        return;
+      }
+      var sitIcon  = SIT_ICON[d.situacao]  || '';
+      var sitLabel = SIT_LABEL[d.situacao] || d.situacao || '--';
+      var diasCls  = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
+      var sc = SC[d.status] || 'b-gray';
+      parts.push('<tr>');
+      parts.push('<td>'+sitIcon+' '+sitLabel+'</td>');
+      parts.push('<td>'+d.edt+'</td>');
+      parts.push('<td>'+d.nome+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimBase||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimTend||'--')+'</td>');
+      parts.push('<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>');
+      parts.push('<td>'+(d.motivo||'--')+'</td>');
+      parts.push('<td><span class="badge '+sc+'">'+d.status+'</span></td>');
+      parts.push('<td>'+(d.responsavel||'--')+'</td>');
+      parts.push('<td style="max-width:160px">'+(d.acao||'--')+'</td>');
+      parts.push('<td style="text-align:center;font-size:10px">'+(d.prazo||'--')+'</td>');
+      parts.push('</tr>');
     });
 
     cardParts.push('</tbody></table></div></div>');
