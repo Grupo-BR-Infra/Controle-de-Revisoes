@@ -858,7 +858,6 @@ function detectarDesvios() {
   if (!dataRefStr) { showMsg('Informe a data de referência.', 'err'); return; }
   // Parse date at noon UTC to avoid timezone day-shift issues
   var dataRef = new Date(dataRefStr + 'T12:00:00Z');
-  // Filtro agora usa coluna Resumo do BD (não mais nível EDT)
 
   try {
     var wb = BD_DATA.wb;
@@ -880,11 +879,10 @@ function detectarDesvios() {
 
     // Diagnostics
     var nBase = allEdts.length;
-    var nL1L2 = allEdts.filter(function(e){ return (e.match(/\./g)||[]).length <= 2; }).length;
     var nLeaves = allEdts.filter(function(k){ return baseT[k].isLeaf; }).length;
     var anyKey = allEdts.find(function(k){ return baseT[k].weeklyDates.length>0; });
     var nWeeks = anyKey ? baseT[anyKey].weeklyDates.length : 0;
-    console.log('[Desvios] Total EDTs:', nBase, '| L1+L2 fixos:', nL1L2, '| Folhas:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
+    console.log('[Desvios] Total EDTs:', nBase, '| Folhas:', nLeaves, '| Semanas:', nWeeks, '| dataRef:', dataRef);
 
     var desvios = [];
     REF_ROWS = {};
@@ -920,8 +918,8 @@ function detectarDesvios() {
 
       // ── Filtro de conclusão conforme seleção do usuário ───────────────
       var jaConcluida = tt.fim <= dataRef;
-      if (FILTRO_CONCLUSAO === 'nao_concluidas' && jaConcluida)  return;  // só não concluídas
-      if (FILTRO_CONCLUSAO === 'concluidas'     && !jaConcluida) return;  // só concluídas
+      if (FILTRO_CONCLUSAO === 'nao_concluidas' && jaConcluida)  return;
+      if (FILTRO_CONCLUSAO === 'concluidas'     && !jaConcluida) return;
       // 'todas' → não filtra
 
       // ── Classificação por situação ──────────────────────────────────────
@@ -930,18 +928,14 @@ function detectarDesvios() {
 
       var situacao;
       if (devDias < 0) {
-        // Tendência termina ANTES do baseline → adiantada
         situacao = 'adiantada';
       } else if (bt.fim <= dataRef) {
-        // Baseline já deveria ter terminado até a data de referência → em atraso
         situacao = 'em_atraso';
       } else {
-        // Baseline ainda não venceu, mas tendência já projeta atraso → tendência de atraso
         situacao = 'tendencia_atraso';
       }
 
       // Custo acumulado até a data de referência
-      // (só significativo para tarefas que já deveriam ter progresso)
       var cumB = 0, cumT = 0;
       bt.weekly.forEach(function(v,i){ if(bt.weeklyDates[i]<=dataRef) cumB+=v||0; });
       tt.weekly.forEach(function(v,i){ if(tt.weeklyDates[i]<=dataRef) cumT+=v||0; });
@@ -952,7 +946,7 @@ function detectarDesvios() {
         edt: edt, nome: bt.name, dataRef: dataRefStr,
         fimBase: bt.fim.toISOString().slice(0,10),
         fimTend: tt.fim.toISOString().slice(0,10),
-        situacao: situacao,   // 'em_atraso' | 'tendencia_atraso' | 'adiantada'
+        situacao: situacao,
         devDias: devDias,
         cumBase: Math.round(cumB), cumTend: Math.round(cumT),
         devRS: Math.round(devRS), devPct: devPct,
@@ -1004,7 +998,7 @@ function renderDesviosTable() {
   ['Tipo','EDT','Tarefa','Término Base','Término Tend.','Desvio (dias)','Custo Base Acum.','Custo Tend. Acum.','Desvio R$','Desvio %'].forEach(function(t){
     h += '<th class="td-crono-hdr" style="background:var(--mod-crono)">' + t + '</th>';
   });
-  // Manual headers — first col is "Salvar?" checkbox with select all
+  // Manual headers
   h += '<th style="background:#1a5276;text-align:center"><input type="checkbox" id="chk-all" title="Selecionar todos" checked onchange="toggleAllDesvios(this.checked)"><br><span style="font-size:9px">Salvar?</span></th>';
   ['Motivo','Responsável','Descrição','Ação Corretiva','Prazo','Status'].forEach(function(t){
     h += '<th style="background:#1a5276">' + t + '</th>';
@@ -1013,11 +1007,9 @@ function renderDesviosTable() {
 
   // ── Build rows interleaved: parent refs + leaf desvios sorted by EDT ──
   var allRows = [];
-  // Add parent ref rows
   Object.keys(REF_ROWS).forEach(function(edt){
     allRows.push({ type: 'ref', data: REF_ROWS[edt] });
   });
-  // Add leaf desvio rows with their index in DESVIOS_DETECTADOS
   DESVIOS_DETECTADOS.forEach(function(d, i){
     allRows.push({ type: 'leaf', data: d, idx: i });
   });
@@ -1030,8 +1022,6 @@ function renderDesviosTable() {
     }
     return 0;
   });
-  // Render using allRows — override the forEach below
-  var _useAllRows = true;
 
   var SIT_LABEL = { em_atraso: '<span style="color:#922B21;font-weight:700">🔴 Em Atraso</span>', tendencia_atraso: '<span style="color:#784212;font-weight:700">🟡 Tendência</span>', adiantada: '<span style="color:#1E8449;font-weight:700">🟢 Adiantada</span>' };
   var SIT_ROW   = { em_atraso: 'background:#FDEDEC', tendencia_atraso: 'background:#FEFDE7', adiantada: 'background:#EAFAF1' };
@@ -1042,7 +1032,6 @@ function renderDesviosTable() {
     if (row.type === 'ref') {
       // ── Parent / Reference row ─────────────────────────────────────
       var diasCls = Math.abs(d.devDias)>=15?'dev-dias-crit':'dev-dias-aten';
-      var nCols = 17; // total columns
       h += '<tr style="background:#EAF0FB;border-left:3px solid #2980B9">';
       h += '<td class="td-auto" style="color:#1a5276;font-weight:700;font-size:11px;white-space:nowrap">';
       h += '📂 Referência</td>';
@@ -1069,7 +1058,7 @@ function renderDesviosTable() {
     h += '<td class="td-auto r">R$ ' + fNum(d.cumTend) + '</td>';
     h += '<td class="td-auto r">' + (d.devRS>0?'+':'') + 'R$ ' + fNum(d.devRS) + '</td>';
     h += '<td class="td-auto r">' + (d.devPct>0?'+':'') + d.devPct + '%</td>';
-    // Salvar? checkbox — checked by default, user deselects to exclude
+    // Salvar? checkbox
     h += '<td class="td-edit" style="text-align:center"><input type="checkbox" class="chk-desvio" data-idx="'+i+'" checked></td>';
     h += '<td class="td-edit"><select onchange="updDesvio('+i+',\'motivo\',this.value)">' + MOTIVOS.map(function(m){ return '<option value="'+m+'"'+(m===d.motivo?' selected':'')+'>'+m+'</option>'; }).join('') + '</select></td>';
     h += '<td class="td-edit"><input type="text" value="' + (d.responsavel||'') + '" placeholder="Nome" onchange="updDesvio('+i+',\'responsavel\',this.value)"></td>';
@@ -1089,7 +1078,6 @@ function toggleAllDesvios(checked) {
 
 function filtrarSituacao(sit) {
   document.querySelectorAll('#tbl-desvios tbody tr').forEach(function(tr) {
-    // Reference rows always visible; leaf rows filtered by situation
     if (!tr.dataset.sit) return; // ref row — keep visible
     tr.style.display = (sit === 'todas' || tr.dataset.sit === sit) ? '' : 'none';
   });
@@ -1114,7 +1102,6 @@ async function registrarDesvios() {
   });
   if (!desviosParaSalvar.length) { showMsg('Selecione ao menos um desvio para registrar.', 'err'); return; }
 
-  // Include reference rows (level 1 and 2) sorted by EDT alongside the leaf desvios
   btn.disabled = true; btn.textContent = 'Registrando...';
   try {
     var titleKey = OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + dataRef + '_' + Date.now();
@@ -1130,85 +1117,8 @@ async function registrarDesvios() {
     document.getElementById('crono-register-area').style.display = 'none';
     showMsg('Desvios de ' + OBRA_ATUAL + ' registrados com sucesso!', 'ok');
   } catch(ex) { showMsg('Erro ao registrar: ' + ex.message, 'err'); }
-  btn.disabled = false; btn.textContent = '💾 Registrar Desvios no SharePoint';
-}
-
-var _existentesRecolhido = false;
-function toggleExistentes() {
-  _existentesRecolhido = !_existentesRecolhido;
-  var el = document.getElementById('crono-existentes-content');
-  var btn = document.querySelector('#crono-existentes-area button');
-  el.style.display = _existentesRecolhido ? 'none' : '';
-  btn.textContent = _existentesRecolhido ? '\u25b6 Expandir' : '\u25bc Recolher';
-}
-
-// Store titleKeys for delete buttons (avoids onclick string quote issues)
-var _cronoDeleteKeys = [];
-function _deleteCronoByIdx(idx) { deleteCronoRec(_cronoDeleteKeys[idx]); }
-
-function renderCronoExistentes() {
-  var area = document.getElementById('crono-existentes-area');
-  var el   = document.getElementById('crono-existentes-content');
-  if (!OBRA_ATUAL || !DESVIOS_OBRA.length) { area.style.display = 'none'; return; }
-  area.style.display = 'block';
-  _cronoDeleteKeys = [];
-
-  var SIT_LABEL = {
-    em_atraso: '\ud83d\udd34 Em Atraso',
-    tendencia_atraso: '\ud83d\udfe1 Tend\u00eancia',
-    adiantada: '\ud83d\udfe2 Adiantada'
-  };
-
-  var rows = [];
-  var allRecs = DESVIOS_OBRA.slice().reverse();
-
-  allRecs.forEach(function(rec, ri) {
-    var keyIdx = _cronoDeleteKeys.length;
-    _cronoDeleteKeys.push(rec.titleKey);
-    var crit = rec.desvios.filter(function(d){ return Math.abs(d.devDias) >= 15; }).length;
-
-    var cardParts = [];
-    cardParts.push('<div class="card" style="margin-bottom:8px;border-left:3px solid var(--mod-crono)">');
-    cardParts.push('<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">');
-    cardParts.push('<div style="font-size:12px"><strong style="color:var(--mod-crono)">Ref: ' + rec.dataRef + '</strong>');
-    if (rec.obs) cardParts.push(' <span style="color:#888">\u2014 ' + rec.obs + '</span>');
-    cardParts.push('</div>');
-    cardParts.push('<div style="display:flex;gap:6px;align-items:center">');
-    if (crit) cardParts.push('<span class="badge b-red">' + crit + ' cr\u00edtico(s)</span>');
-    cardParts.push('<span style="font-size:10px;color:#aaa">' + new Date(rec.date).toLocaleDateString('pt-BR') + '</span>');
-    cardParts.push('<button class="btn btn-danger" style="padding:2px 8px;font-size:10px" data-kidx="' + keyIdx + '" onclick="_deleteCronoByIdx(parseInt(this.dataset.kidx))">Excluir</button>');
-    cardParts.push('</div></div>');
-
-    cardParts.push('<div class="scroll-x" style="margin-top:8px">');
-    cardParts.push('<table class="tbl crono" style="font-size:11px"><thead><tr>');
-    cardParts.push('<th>Situa\u00e7\u00e3o</th><th>EDT</th><th>Tarefa</th><th>Desvio dias</th><th>Motivo</th><th>Status</th><th>Respons\u00e1vel</th><th>A\u00e7\u00e3o Corretiva</th>');
-    cardParts.push('</tr></thead><tbody>');
-
-    rec.desvios.forEach(function(d) {
-      var sitIcon  = SIT_ICON[d.situacao]  || '';
-      var sitLabel = SIT_LABEL[d.situacao] || d.situacao || '--';
-      var diasCls  = Math.abs(d.devDias)>=15 ? 'dev-dias-crit' : 'dev-dias-aten';
-      var sc = SC[d.status] || 'b-gray';
-      parts.push('<tr>');
-      parts.push('<td>'+sitIcon+' '+sitLabel+'</td>');
-      parts.push('<td>'+d.edt+'</td>');
-      parts.push('<td>'+d.nome+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimBase||'--')+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.fimTend||'--')+'</td>');
-      parts.push('<td class="'+diasCls+'" style="text-align:center">'+(d.devDias>0?'+':'')+d.devDias+'d</td>');
-      parts.push('<td>'+(d.motivo||'--')+'</td>');
-      parts.push('<td><span class="badge '+sc+'">'+d.status+'</span></td>');
-      parts.push('<td>'+(d.responsavel||'--')+'</td>');
-      parts.push('<td style="max-width:160px">'+(d.acao||'--')+'</td>');
-      parts.push('<td style="text-align:center;font-size:10px">'+(d.prazo||'--')+'</td>');
-      parts.push('</tr>');
-    });
-
-    cardParts.push('</tbody></table></div></div>');
-    rows.push(cardParts.join(''));
-  });
-
-  el.innerHTML = rows.join('');
+  // FIX: texto alinhado com o HTML original do botão
+  btn.disabled = false; btn.textContent = '💾 Registrar no SharePoint';
 }
 
 // Delete key store for historico
@@ -1305,7 +1215,7 @@ async function deleteCronoRec(titleKey) {
 }
 
 // ════════════════════════════════════════════════
-//  BUDGET MODULE (same as original)
+//  BUDGET MODULE
 // ════════════════════════════════════════════════
 async function saveRevision() {
   if (!PARSED_BUDGET) { showMsg('Carregue o arquivo Budget primeiro (BD ou arquivo separado).', 'err'); return; }
@@ -1415,12 +1325,11 @@ function renderInsights() {
 }
 
 // ════════════════════════════════════════════════
-//  EXPORTAR PARA PBI
+//  EXPORTAR EXCEL
 // ════════════════════════════════════════════════
 async function exportarExcel() {
   if (!OBRA_ATUAL) { showMsg('Selecione uma obra para exportar.', 'err'); return; }
-  var statusEl = document.getElementById('export-status');
-  statusEl.textContent = 'Gerando arquivo...';
+  showMsg('Gerando arquivo Excel...', 'info');
 
   try {
     var wb = XLSX.utils.book_new();
@@ -1433,10 +1342,9 @@ async function exportarExcel() {
       });
     });
     var wsDesvios = XLSX.utils.aoa_to_sheet(desviosRows);
-    // Format desvio% column (index 10) as percentage
     XLSX.utils.book_append_sheet(wb, wsDesvios, 'Desvios');
 
-    // ── Aba 2: Revisoes Budget (load JSON from each) ──
+    // ── Aba 2: Revisoes Budget ──
     var budRows = [['Obra','Revisão','Mês Fechado','Código','Descrição','Budget Total (R$)','Observação','Data Revisão']];
     for (var i = 0; i < REVS.length; i++) {
       var rev = REVS[i];
@@ -1459,10 +1367,8 @@ async function exportarExcel() {
     // Download
     var fileName = 'PBI_' + OBRA_ATUAL.replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.xlsx';
     XLSX.writeFile(wb, fileName);
-    statusEl.textContent = '✓ Arquivo baixado: ' + fileName;
-    showMsg('Arquivo PBI gerado com sucesso!', 'ok');
+    showMsg('✓ Arquivo gerado: ' + fileName, 'ok');
   } catch(ex) {
-    statusEl.textContent = 'Erro: ' + ex.message;
     showMsg('Erro ao exportar: ' + ex.message, 'err');
   }
 }
